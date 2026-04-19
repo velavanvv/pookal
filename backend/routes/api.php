@@ -1,0 +1,131 @@
+<?php
+
+use App\Http\Controllers\Api\CatalogController;
+use App\Http\Controllers\Api\VendorController;
+use App\Http\Controllers\Api\CrmController;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DeliveryController;
+use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\StorefrontController;
+use App\Http\Controllers\Api\WebsiteConfigController;
+use Illuminate\Support\Facades\Route;
+
+Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'Pookal']));
+
+Route::prefix('auth')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+});
+
+Route::get('/storefront/{slug}', [StorefrontController::class, 'show']);
+Route::post('/storefront/{slug}/order', [StorefrontController::class, 'placeOrder']);
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/summary', [DashboardController::class, 'summary']);
+    });
+
+    Route::prefix('catalog')->group(function () {
+        Route::get('/products', [CatalogController::class, 'index']);
+        Route::post('/products', [CatalogController::class, 'store']);
+    });
+
+    Route::prefix('inventory')->group(function () {
+        Route::get('/items', [InventoryController::class, 'index']);
+        Route::post('/receive', [InventoryController::class, 'receive']);
+        Route::post('/adjust', [InventoryController::class, 'adjust']);
+    });
+
+    Route::prefix('orders')->group(function () {
+        Route::get('/', [OrderController::class, 'index']);
+        Route::post('/', [OrderController::class, 'store']);
+        Route::patch('/{order}', [OrderController::class, 'update']);
+    });
+
+    Route::prefix('crm')->group(function () {
+        Route::get('/customers', [CrmController::class, 'customers']);
+        Route::post('/customers', [CrmController::class, 'storeCustomer']);
+        Route::get('/campaigns', [CrmController::class, 'campaigns']);
+    });
+
+    Route::prefix('delivery')->group(function () {
+        Route::get('/board', [DeliveryController::class, 'board']);
+        Route::post('/dispatch', [DeliveryController::class, 'dispatch']);
+    });
+
+    Route::prefix('reports')->group(function () {
+        Route::get('/sales', [ReportController::class, 'sales']);
+        Route::get('/inventory', [ReportController::class, 'inventory']);
+    });
+
+    Route::prefix('settings')->group(function () {
+        Route::get('/', [SettingsController::class, 'index']);
+        Route::post('/', [SettingsController::class, 'update']);
+    });
+
+    Route::prefix('website-config')->group(function () {
+        Route::get('/', [WebsiteConfigController::class, 'index']);
+        Route::post('/', [WebsiteConfigController::class, 'update']);
+    });
+
+    Route::prefix('catalog')->group(function () {
+        Route::patch('/products/{product}', [CatalogController::class, 'update']);
+    });
+
+    // ── Vendor / Farmer management ─────────────────────────────────────────
+    Route::prefix('vendor')->group(function () {
+        Route::get('/stats',                               [VendorController::class, 'stats']);
+
+        Route::get('/farmers',                             [VendorController::class, 'listFarmers']);
+        Route::post('/farmers',                            [VendorController::class, 'storeFarmer']);
+        Route::patch('/farmers/{farmer}',                  [VendorController::class, 'updateFarmer']);
+        Route::delete('/farmers/{farmer}',                 [VendorController::class, 'deleteFarmer']);
+        Route::post('/farmers/import',                     [VendorController::class, 'importFarmers']);
+
+        Route::get('/deliveries',                          [VendorController::class, 'listDeliveries']);
+        Route::post('/deliveries',                         [VendorController::class, 'storeDelivery']);
+        Route::delete('/deliveries/{delivery}',            [VendorController::class, 'deleteDelivery']);
+
+        Route::get('/payments',                            [VendorController::class, 'listPayments']);
+        Route::post('/payments/generate',                  [VendorController::class, 'generatePayment']);
+        Route::patch('/payments/{payment}/mark-paid',      [VendorController::class, 'markPaymentPaid']);
+
+        Route::get('/buyers',                              [VendorController::class, 'listBuyers']);
+        Route::post('/buyers',                             [VendorController::class, 'storeBuyer']);
+        Route::patch('/buyers/{buyer}',                    [VendorController::class, 'updateBuyer']);
+        Route::delete('/buyers/{buyer}',                   [VendorController::class, 'deleteBuyer']);
+
+        Route::get('/sales',                               [VendorController::class, 'listSales']);
+        Route::post('/sales',                              [VendorController::class, 'storeSale']);
+        Route::patch('/sales/{sale}/status',               [VendorController::class, 'updateSaleStatus']);
+        Route::delete('/sales/{sale}',                     [VendorController::class, 'deleteSale']);
+    });
+
+    // ── Super-admin routes ──────────────────────────────────────────────────
+    Route::prefix('admin')->group(function () {
+        Route::get('/stats',                             [AdminController::class, 'stats']);
+
+        Route::get('/plans',                            [AdminController::class, 'listPlans']);
+        Route::post('/plans',                           [AdminController::class, 'storePlan']);
+        Route::patch('/plans/{plan}',                   [AdminController::class, 'updatePlan']);
+        Route::delete('/plans/{plan}',                  [AdminController::class, 'deletePlan']);
+
+        Route::get('/tenants',                          [AdminController::class, 'listTenants']);
+        Route::post('/tenants',                         [AdminController::class, 'storeTenant']);
+        Route::patch('/tenants/{user}',                 [AdminController::class, 'updateTenant']);
+        Route::delete('/tenants/{user}',                [AdminController::class, 'deleteTenant']);
+
+        Route::post('/tenants/{user}/renew',            [AdminController::class, 'renewSubscription']);
+        Route::post('/tenants/{user}/suspend',          [AdminController::class, 'suspendSubscription']);
+        Route::post('/tenants/{user}/website-toggle',   [AdminController::class, 'toggleWebsite']);
+        Route::get('/subscriptions',                    [AdminController::class, 'listSubscriptions']);
+    });
+});
