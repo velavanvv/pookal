@@ -1,0 +1,42 @@
+databases:
+  - name: pookal-db
+    plan: free
+    databaseName: pookal
+    user: pookal
+
+services:
+  - type: web
+    name: pookal-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: APP_NAME
+        value: Pookal
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_KEY
+        value: base64:ZXJJpPKV7WIn9ugX7wfTE+BCBPZWGurAcVjWyQfROuo=
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pookal-db
+          property: connectionString
+      - key: DB_SSLMODE
+        value: require
+      - key: FRONTEND_URL
+        value: https://pookal-frontend.vercel.app
+      - key: FRONTEND_URLS
+        value: https://pookal-frontend.vercel.app
+      - key: SANCTUM_STATEFUL_DOMAINS
+        value: pookal-frontend.vercel.app
+      - key: CACHE_STORE
+        value: file
+      - key: SESSION_DRIVER
+        value: file
+      - key: QUEUE_CONNECTION
+        value: database
