@@ -18,18 +18,25 @@ const DEFAULTS = {
   website_share_url: '',
 };
 
+const THEMES = [
+  { v: 'rose-luxury',     label: 'Rose Luxury',    primary: '#7d294a', secondary: '#25543a', preview: ['#7d294a','#e8c9d5','#25543a'] },
+  { v: 'gold-garden',     label: 'Gold Garden',    primary: '#92400e', secondary: '#166534', preview: ['#92400e','#fef3c7','#166534'] },
+  { v: 'green-botanical', label: 'Botanical',      primary: '#14532d', secondary: '#1e3a5f', preview: ['#14532d','#dcfce7','#1e3a5f'] },
+];
+
 export default function WebsiteConfigPage() {
-  const [form, setForm] = useState(DEFAULTS);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [form, setForm]         = useState(DEFAULTS);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [toast, setToast]       = useState(null); // { type: 'success'|'error', msg }
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [copied, setCopied]     = useState(false);
+  const [activeSection, setActiveSection] = useState('identity');
 
   useEffect(() => {
     api.get('/website-config')
-      .then(({ data }) => setForm((current) => ({ ...current, ...data })))
-      .catch(() => setError('Could not load website configuration.'))
+      .then(({ data }) => setForm(f => ({ ...f, ...data })))
+      .catch(() => showToast('error', 'Could not load website configuration.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -40,189 +47,339 @@ export default function WebsiteConfigPage() {
 
   useEffect(() => {
     QRCode.toDataURL(shareUrl, {
-      width: 220,
-      margin: 1,
-      color: {
-        dark: form.website_primary_color || '#7d294a',
-        light: '#ffffff',
-      },
-    })
-      .then(setQrDataUrl)
-      .catch(() => setQrDataUrl(''));
+      width: 240, margin: 2,
+      color: { dark: form.website_primary_color || '#7d294a', light: '#ffffff' },
+    }).then(setQrDataUrl).catch(() => setQrDataUrl(''));
   }, [form.website_primary_color, shareUrl]);
 
-  const setField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleSave = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    setMessage('');
-    setError('');
+  const showToast = (type, msg) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3500);
+  };
 
+  const handleSave = async e => {
+    e.preventDefault(); setSaving(true);
     try {
-      const { data } = await api.post('/website-config', {
-        ...form,
-        website_enabled: Boolean(form.website_enabled),
-      });
-      setForm((current) => ({ ...current, ...data.config }));
-      setMessage('Website configuration saved successfully.');
+      const { data } = await api.post('/website-config', { ...form, website_enabled: Boolean(form.website_enabled) });
+      setForm(f => ({ ...f, ...data.config }));
+      showToast('success', 'Website configuration saved.');
     } catch (err) {
       const errors = err.response?.data?.errors;
-      setError(errors ? Object.values(errors).flat().join(' ') : 'Could not save website configuration.');
-    } finally {
-      setSaving(false);
-    }
+      showToast('error', errors ? Object.values(errors).flat().join(' ') : 'Could not save configuration.');
+    } finally { setSaving(false); }
   };
 
-  const copyShareUrl = async () => {
+  const copy = async () => {
     await navigator.clipboard.writeText(shareUrl);
-    setMessage('Storefront link copied.');
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
 
-  if (loading) {
-    return <div className="text-center py-5"><div className="spinner-border text-success" /></div>;
-  }
+  const downloadQr = () => {
+    const a = document.createElement('a');
+    a.href = qrDataUrl; a.download = `${form.website_slug || 'store'}-qr.png`; a.click();
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '1rem', color: '#888' }}>
+      <div className="spinner-border" style={{ color: 'var(--pookal-rose)' }} />
+      <span>Loading configuration…</span>
+    </div>
+  );
+
+  const sections = [
+    { key: 'identity',  label: 'Identity',  icon: 'bi-shop' },
+    { key: 'branding',  label: 'Branding',  icon: 'bi-palette' },
+    { key: 'content',   label: 'Content',   icon: 'bi-text-left' },
+    { key: 'contact',   label: 'Contact',   icon: 'bi-telephone' },
+  ];
 
   return (
-    <div className="row g-4">
-      <div className="col-xl-8">
-        <div className="card border-0 shadow-sm">
-          <div className="card-body p-4">
-            <div className="d-flex align-items-start justify-content-between gap-3 mb-4">
-              <div>
-                <h4 className="mb-1">Website Config</h4>
-                <p className="text-muted mb-0">
-                  Enable a public flower website that syncs your CRM products, inventory, and pricing.
-                </p>
-              </div>
-              <div className={`badge text-bg-${form.website_enabled ? 'success' : 'secondary'} fs-6`}>
-                {form.website_enabled ? 'Enabled' : 'Disabled'}
-              </div>
-            </div>
-
-            {message ? <div className="alert alert-success py-2">{message}</div> : null}
-            {error ? <div className="alert alert-danger py-2">{error}</div> : null}
-
-            <form onSubmit={handleSave} className="d-grid gap-4">
-              <div className="website-config-toggle">
-                <div>
-                  <strong>Enable customer storefront</strong>
-                  <div className="text-muted small">Show a public URL and QR page your florist can share with their buyers.</div>
-                </div>
-                <div className="form-check form-switch m-0">
-                  <input
-                    className="form-check-input website-switch"
-                    type="checkbox"
-                    checked={Boolean(form.website_enabled)}
-                    onChange={(e) => setField('website_enabled', e.target.checked)}
-                  />
-                </div>
-              </div>
-
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Storefront slug</label>
-                  <input
-                    className="form-control"
-                    value={form.website_slug || ''}
-                    onChange={(e) => setField('website_slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                  />
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Theme preset</label>
-                  <select className="form-select" value={form.website_theme || 'rose-luxury'} onChange={(e) => setField('website_theme', e.target.value)}>
-                    <option value="rose-luxury">Rose Luxury</option>
-                    <option value="gold-garden">Gold Garden</option>
-                    <option value="green-botanical">Green Botanical</option>
-                  </select>
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Setup fee</label>
-                  <input type="number" min="0" className="form-control" value={form.website_setup_fee || ''} onChange={(e) => setField('website_setup_fee', e.target.value)} />
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Monthly website charge</label>
-                  <input type="number" min="0" className="form-control" value={form.website_subscription_amount || ''} onChange={(e) => setField('website_subscription_amount', e.target.value)} />
-                </div>
-              </div>
-
-              <div className="row g-3">
-                <div className="col-12">
-                  <label className="form-label small fw-semibold">Hero title</label>
-                  <input className="form-control" value={form.website_banner_title || ''} onChange={(e) => setField('website_banner_title', e.target.value)} />
-                </div>
-                <div className="col-12">
-                  <label className="form-label small fw-semibold">Hero subtitle</label>
-                  <textarea className="form-control" rows={2} value={form.website_banner_subtitle || ''} onChange={(e) => setField('website_banner_subtitle', e.target.value)} />
-                </div>
-                <div className="col-12">
-                  <label className="form-label small fw-semibold">Store intro</label>
-                  <textarea className="form-control" rows={3} value={form.website_intro || ''} onChange={(e) => setField('website_intro', e.target.value)} />
-                </div>
-              </div>
-
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Primary color</label>
-                  <input type="color" className="form-control form-control-color website-color-input" value={form.website_primary_color || '#7d294a'} onChange={(e) => setField('website_primary_color', e.target.value)} />
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Secondary color</label>
-                  <input type="color" className="form-control form-control-color website-color-input" value={form.website_secondary_color || '#25543a'} onChange={(e) => setField('website_secondary_color', e.target.value)} />
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Contact phone</label>
-                  <input className="form-control" value={form.website_contact_phone || ''} onChange={(e) => setField('website_contact_phone', e.target.value)} />
-                </div>
-                <div className="col-md-6">
-                  <label className="form-label small fw-semibold">Contact email</label>
-                  <input className="form-control" value={form.website_contact_email || ''} onChange={(e) => setField('website_contact_email', e.target.value)} />
-                </div>
-              </div>
-
-              <div className="d-flex justify-content-end">
-                <button className="btn btn-dark" disabled={saving}>
-                  {saving ? <span className="spinner-border spinner-border-sm me-2" /> : null}
-                  Save Website Config
-                </button>
-              </div>
-            </form>
-          </div>
+    <div className="wc-page">
+      {/* Toast */}
+      {toast && (
+        <div className={`wc-toast wc-toast--${toast.type}`}>
+          <i className={`bi ${toast.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} />
+          {toast.msg}
         </div>
+      )}
+
+      {/* ── Page header ─────────────────────────────────────────────── */}
+      <div className="wc-header">
+        <div>
+          <h4 className="wc-header__title">Website Config</h4>
+          <p className="wc-header__sub">Set up and customise your public flower storefront</p>
+        </div>
+        <button className="wc-save-btn" onClick={handleSave} disabled={saving}>
+          {saving ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-cloud-arrow-up" />}
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
       </div>
 
-      <div className="col-xl-4">
-        <div className="card border-0 shadow-sm mb-4">
-          <div className="card-body p-4">
-            <h5 className="mb-3">Share storefront</h5>
-            <div className="website-share-code mb-3">
-              {qrDataUrl ? (
-                <img src={qrDataUrl} alt="Storefront QR code" className="img-fluid rounded-4" />
-              ) : (
-                <div className="website-share-code__fallback">
-                  <div className="spinner-border spinner-border-sm text-success" />
-                </div>
-              )}
+      {/* ── Enable toggle banner ─────────────────────────────────────── */}
+      <div className={`wc-enable-banner ${form.website_enabled ? 'wc-enable-banner--on' : ''}`}>
+        <div className="wc-enable-banner__left">
+          <div className={`wc-status-dot ${form.website_enabled ? 'wc-status-dot--live' : ''}`} />
+          <div>
+            <div className="wc-enable-banner__title">
+              {form.website_enabled ? 'Your storefront is live' : 'Storefront is disabled'}
             </div>
-            <label className="form-label small fw-semibold">Customer-facing URL</label>
-            <div className="input-group mb-3">
-              <input className="form-control" value={shareUrl} readOnly />
-              <button className="btn btn-outline-secondary" type="button" onClick={copyShareUrl}>Copy</button>
+            <div className="wc-enable-banner__sub">
+              {form.website_enabled
+                ? 'Customers can browse and order from your public store URL.'
+                : 'Enable to publish your public flower store page.'}
             </div>
-            <a href={shareUrl} target="_blank" rel="noreferrer" className="btn btn-outline-dark w-100">Open storefront</a>
           </div>
+        </div>
+        <label className="wc-toggle">
+          <input
+            type="checkbox"
+            checked={Boolean(form.website_enabled)}
+            onChange={e => setField('website_enabled', e.target.checked)}
+          />
+          <span className="wc-toggle__track">
+            <span className="wc-toggle__thumb" />
+          </span>
+        </label>
+      </div>
+
+      <div className="wc-layout">
+        {/* ── Left: config form ──────────────────────────────────────── */}
+        <div className="wc-form-col">
+          {/* Section nav */}
+          <div className="wc-section-nav">
+            {sections.map(s => (
+              <button
+                key={s.key}
+                className={`wc-section-btn ${activeSection === s.key ? 'wc-section-btn--active' : ''}`}
+                onClick={() => setActiveSection(s.key)}
+              >
+                <i className={`bi ${s.icon}`} />
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Identity ── */}
+          {activeSection === 'identity' && (
+            <div className="wc-card">
+              <div className="wc-card__head">
+                <i className="bi bi-shop wc-card__icon" />
+                <div>
+                  <div className="wc-card__title">Store Identity</div>
+                  <div className="wc-card__sub">Your storefront URL slug and theme preset</div>
+                </div>
+              </div>
+              <div className="wc-card__body">
+                <div className="wc-field">
+                  <label>Storefront slug</label>
+                  <div className="wc-input-with-prefix">
+                    <span className="wc-input-prefix">/store/</span>
+                    <input
+                      className="wc-input"
+                      value={form.website_slug || ''}
+                      onChange={e => setField('website_slug', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                      placeholder="your-shop-name"
+                    />
+                  </div>
+                  <span className="wc-field-hint">Only lowercase letters, numbers and hyphens</span>
+                </div>
+
+                <div className="wc-field">
+                  <label>Theme</label>
+                  <div className="wc-theme-grid">
+                    {THEMES.map(t => (
+                      <button
+                        key={t.v} type="button"
+                        className={`wc-theme-card ${form.website_theme === t.v ? 'wc-theme-card--active' : ''}`}
+                        onClick={() => {
+                          setField('website_theme', t.v);
+                          setField('website_primary_color', t.primary);
+                          setField('website_secondary_color', t.secondary);
+                        }}
+                      >
+                        <div className="wc-theme-swatches">
+                          {t.preview.map((c, i) => <span key={i} style={{ background: c }} />)}
+                        </div>
+                        <span>{t.label}</span>
+                        {form.website_theme === t.v && <i className="bi bi-check-circle-fill wc-theme-check" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Branding ── */}
+          {activeSection === 'branding' && (
+            <div className="wc-card">
+              <div className="wc-card__head">
+                <i className="bi bi-palette wc-card__icon" />
+                <div>
+                  <div className="wc-card__title">Brand Colors</div>
+                  <div className="wc-card__sub">Custom colors override the theme preset</div>
+                </div>
+              </div>
+              <div className="wc-card__body">
+                <div className="wc-color-row">
+                  {[
+                    { key: 'website_primary_color',   label: 'Primary color'   },
+                    { key: 'website_secondary_color',  label: 'Secondary color' },
+                  ].map(({ key, label }) => (
+                    <div key={key} className="wc-field">
+                      <label>{label}</label>
+                      <div className="wc-color-input">
+                        <input
+                          type="color"
+                          value={form[key] || '#000000'}
+                          onChange={e => setField(key, e.target.value)}
+                          className="wc-color-swatch"
+                        />
+                        <input
+                          className="wc-input wc-input--mono"
+                          value={form[key] || ''}
+                          onChange={e => setField(key, e.target.value)}
+                          placeholder="#7d294a"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="wc-color-preview" style={{ background: `linear-gradient(135deg, ${form.website_primary_color}, ${form.website_secondary_color})` }}>
+                  <span>Live color preview</span>
+                  <span style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 12px', borderRadius: 20, fontSize: '0.8rem' }}>Button</span>
+                </div>
+
+                <div className="wc-divider" />
+
+                <div className="wc-field-row">
+                  <div className="wc-field">
+                    <label>Setup fee (Rs.)</label>
+                    <input type="number" min="0" className="wc-input" value={form.website_setup_fee || ''} onChange={e => setField('website_setup_fee', e.target.value)} />
+                  </div>
+                  <div className="wc-field">
+                    <label>Monthly charge (Rs.)</label>
+                    <input type="number" min="0" className="wc-input" value={form.website_subscription_amount || ''} onChange={e => setField('website_subscription_amount', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Content ── */}
+          {activeSection === 'content' && (
+            <div className="wc-card">
+              <div className="wc-card__head">
+                <i className="bi bi-text-left wc-card__icon" />
+                <div>
+                  <div className="wc-card__title">Store Content</div>
+                  <div className="wc-card__sub">Hero banner and store description text</div>
+                </div>
+              </div>
+              <div className="wc-card__body">
+                <div className="wc-field">
+                  <label>Hero title</label>
+                  <input className="wc-input" value={form.website_banner_title || ''} onChange={e => setField('website_banner_title', e.target.value)} placeholder="e.g. Send flowers from Pookal" />
+                  <span className="wc-field-hint">{(form.website_banner_title || '').length} / 120 characters</span>
+                </div>
+                <div className="wc-field">
+                  <label>Hero subtitle</label>
+                  <textarea className="wc-input wc-textarea" rows={2} value={form.website_banner_subtitle || ''} onChange={e => setField('website_banner_subtitle', e.target.value)} placeholder="A short tagline shown below the title" />
+                </div>
+                <div className="wc-field">
+                  <label>Store introduction</label>
+                  <textarea className="wc-input wc-textarea" rows={4} value={form.website_intro || ''} onChange={e => setField('website_intro', e.target.value)} placeholder="Tell your customers about your shop, what makes you special…" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Contact ── */}
+          {activeSection === 'contact' && (
+            <div className="wc-card">
+              <div className="wc-card__head">
+                <i className="bi bi-telephone wc-card__icon" />
+                <div>
+                  <div className="wc-card__title">Contact Details</div>
+                  <div className="wc-card__sub">Shown on the storefront for customer enquiries</div>
+                </div>
+              </div>
+              <div className="wc-card__body">
+                <div className="wc-field">
+                  <label>Contact phone</label>
+                  <div className="wc-input-with-icon">
+                    <i className="bi bi-telephone" />
+                    <input className="wc-input" value={form.website_contact_phone || ''} onChange={e => setField('website_contact_phone', e.target.value)} placeholder="+91 98765 43210" />
+                  </div>
+                </div>
+                <div className="wc-field">
+                  <label>Contact email</label>
+                  <div className="wc-input-with-icon">
+                    <i className="bi bi-envelope" />
+                    <input type="email" className="wc-input" value={form.website_contact_email || ''} onChange={e => setField('website_contact_email', e.target.value)} placeholder="flowers@yourshop.com" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="card border-0 shadow-sm">
-          <div className="card-body p-4">
-            <h6 className="text-uppercase small text-muted mb-3">How it works</h6>
-            <div className="website-steps">
-              <div className="website-step"><span>1</span><p className="mb-0">Enable the storefront and save the slug.</p></div>
-              <div className="website-step"><span>2</span><p className="mb-0">Share the URL or QR code with your customers.</p></div>
-              <div className="website-step"><span>3</span><p className="mb-0">Customers browse live products pulled from your Pookal inventory.</p></div>
+        {/* ── Right: share panel ────────────────────────────────────── */}
+        <aside className="wc-share-col">
+          <div className="wc-share-card">
+            <div className="wc-share-card__head">
+              <i className="bi bi-qr-code" style={{ fontSize: '1.1rem', color: 'var(--pookal-rose)' }} />
+              <div className="wc-share-card__title">Share storefront</div>
+            </div>
+
+            <div className="wc-qr-wrapper">
+              {qrDataUrl ? (
+                <img src={qrDataUrl} alt="QR code" className="wc-qr-img" />
+              ) : (
+                <div className="wc-qr-placeholder"><div className="spinner-border spinner-border-sm" /></div>
+              )}
+            </div>
+
+            <div className="wc-url-row">
+              <div className="wc-url-display">
+                <i className="bi bi-link-45deg" />
+                <span>{shareUrl}</span>
+              </div>
+              <button className="wc-copy-btn" onClick={copy}>
+                {copied ? <><i className="bi bi-check-lg" /> Copied!</> : <><i className="bi bi-copy" /> Copy</>}
+              </button>
+            </div>
+
+            <div className="wc-share-actions">
+              <a href={shareUrl} target="_blank" rel="noreferrer" className="wc-action-btn">
+                <i className="bi bi-box-arrow-up-right" /> Open store
+              </a>
+              {qrDataUrl && (
+                <button className="wc-action-btn" onClick={downloadQr}>
+                  <i className="bi bi-download" /> Download QR
+                </button>
+              )}
             </div>
           </div>
-        </div>
+
+          <div className="wc-howto-card">
+            <div className="wc-howto-title">How it works</div>
+            {[
+              { n: 1, text: 'Enable the storefront and choose a slug.' },
+              { n: 2, text: 'Customise theme, colors and content.' },
+              { n: 3, text: 'Share the URL or QR with your customers.' },
+              { n: 4, text: 'Orders placed online appear in your CRM.' },
+            ].map(step => (
+              <div key={step.n} className="wc-step">
+                <span className="wc-step__num">{step.n}</span>
+                <p>{step.text}</p>
+              </div>
+            ))}
+          </div>
+        </aside>
       </div>
     </div>
   );
