@@ -20,23 +20,39 @@ services:
         value: false
       - key: APP_KEY
         value: base64:ZXJJpPKV7WIn9ugX7wfTE+BCBPZWGurAcVjWyQfROuo=
-      - key: DB_CONNECTION
+      - key: APP_URL
+        value: https://pookal.onrender.com
+
+      # ── Platform database → Render PostgreSQL ─────────────────────────────
+      # config/database.php reads PLATFORM_DATABASE_URL for the 'platform' connection.
+      # Laravel URL-parser extracts driver/host/port/db/user/pass from the URL.
+      - key: PLATFORM_DB_DRIVER
         value: pgsql
-      - key: DATABASE_URL
+      - key: PLATFORM_DATABASE_URL
         fromDatabase:
           name: pookal-db
           property: connectionString
-      - key: DB_SSLMODE
+      - key: PLATFORM_DB_SSLMODE
         value: require
+
+      # ── Tenant databases → SQLite inside container ────────────────────────
+      # Each shop/branch gets its own SQLite file under /var/www/html/database/tenants/
+      # NOTE: ephemeral on free plan — data is recreated by seeder on each deploy.
+      - key: TENANT_DB_DRIVER
+        value: sqlite
+
+      # ── Frontend / CORS ───────────────────────────────────────────────────
       - key: FRONTEND_URL
         value: https://pookal-frontend.vercel.app
       - key: FRONTEND_URLS
         value: https://pookal-frontend.vercel.app
       - key: SANCTUM_STATEFUL_DOMAINS
         value: pookal-frontend.vercel.app
+
+      # ── Cache / Session / Queue ───────────────────────────────────────────
       - key: CACHE_STORE
         value: file
       - key: SESSION_DRIVER
         value: file
       - key: QUEUE_CONNECTION
-        value: database
+        value: sync

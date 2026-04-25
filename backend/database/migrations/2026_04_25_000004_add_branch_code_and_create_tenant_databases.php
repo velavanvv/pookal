@@ -29,7 +29,9 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
-            $table->unique(['user_id', 'scope', 'branch_id']);
+            // PostgreSQL treats NULLs as distinct in multi-column unique constraints,
+            // so (user_id, scope, NULL) would not prevent duplicates. We rely on
+            // application-level updateOrCreate; the index is kept for non-null branch rows.
             $table->unique('storefront_slug');
         });
     }
