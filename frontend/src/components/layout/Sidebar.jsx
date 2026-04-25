@@ -10,17 +10,22 @@ export default function Sidebar() {
   const { activeBranch, switchBranch } = useBranch();
   const navigate = useNavigate();
 
-  const isSuperAdmin = user?.role === 'superadmin';
-  const isOwner      = !isSuperAdmin && !user?.parent_user_id;
-  const modules      = user?.subscription?.modules ?? null; // null = no restriction
+  const isSuperAdmin  = user?.role === 'superadmin';
+  const isAdmin       = user?.role === 'admin';
+  const isOwner       = !isSuperAdmin && !user?.parent_user_id;
+  const isBranchUser  = !!user?.locked_branch; // has branch_id — cannot switch
+  const modules       = user?.subscription?.modules ?? null; // null = no restriction
 
   const [branches, setBranches] = useState([]);
 
   useEffect(() => {
-    if (!isSuperAdmin) {
+    // Branch users are permanently locked — no need to fetch the list
+    if (isAdmin && !isBranchUser) {
       api.get('/branches').then(({ data }) => setBranches(data || [])).catch(() => {});
+    } else {
+      setBranches([]);
     }
-  }, [isSuperAdmin]);
+  }, [isAdmin, isBranchUser]);
 
   const handleLogout = async () => {
     await logout();
@@ -51,8 +56,25 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Branch context switcher — only for shop users with branches */}
-      {!isSuperAdmin && activeBranches.length > 0 && (
+      {/* Branch context — locked badge for branch users */}
+      {isBranchUser && (
+        <div style={{ padding: '0 0.75rem 0.5rem' }}>
+          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>
+            Branch
+          </div>
+          <div style={{
+            background: 'rgba(125,41,74,0.3)', border: '1px solid rgba(125,41,74,0.5)',
+            borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.75rem',
+            fontSize: '0.78rem', color: '#fda4af', display: 'flex', alignItems: 'center', gap: '0.4rem',
+          }}>
+            <i className="bi bi-lock-fill" style={{ fontSize: '0.7rem' }} />
+            <span style={{ fontWeight: 600 }}>{user.locked_branch.name}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Branch context switcher — only for shop owners/staff with multiple branches */}
+      {isAdmin && !isBranchUser && activeBranches.length > 0 && (
         <div style={{ padding: '0 0.75rem 0.5rem' }}>
           <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>
             Branch View
@@ -69,14 +91,18 @@ export default function Sidebar() {
               cursor: 'pointer', outline: 'none',
             }}
           >
-            <option value="" style={{ background: '#18181b', color: '#fff' }}>All branches</option>
+            <option value="" style={{ background: '#18181b', color: '#fff' }}>🏪 Main Shop (All)</option>
             {activeBranches.map(b => (
-              <option key={b.id} value={b.id} style={{ background: '#18181b', color: '#fff' }}>{b.name}</option>
+              <option key={b.id} value={b.id} style={{ background: '#18181b', color: '#fff' }}>└ {b.name}</option>
             ))}
           </select>
-          {activeBranch && (
+          {activeBranch ? (
             <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem', textAlign: 'center' }}>
-              Viewing: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{activeBranch.name}</strong>
+              Sub-branch: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{activeBranch.name}</strong>
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.25rem', textAlign: 'center' }}>
+              Viewing all branches combined
             </div>
           )}
         </div>

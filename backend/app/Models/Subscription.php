@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class Subscription extends Model
+class Subscription extends PlatformModel
 {
     protected $fillable = [
         'user_id', 'plan_id', 'status', 'billing_cycle',

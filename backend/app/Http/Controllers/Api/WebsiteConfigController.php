@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\ShopSetting;
+use App\Models\TenantDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -12,11 +13,12 @@ class WebsiteConfigController
     private function buildConfig(Request $request): array
     {
         $user = $request->user();
+        $mainDatabase = $user->mainDatabase ?? $user->load('mainDatabase')->mainDatabase;
         $shopName = $user->shop_name ?: $user->name;
         $defaultSlug = Str::slug($shopName ?: 'pookal-store');
         $defaults = [
             'website_enabled' => false,
-            'website_slug' => $defaultSlug,
+            'website_slug' => $mainDatabase?->storefront_slug ?: $defaultSlug,
             'website_theme' => 'rose-luxury',
             'website_banner_title' => "Send flowers from {$shopName}",
             'website_banner_subtitle' => 'Handcrafted bouquets, live inventory, and elegant gifting in one shareable storefront.',
@@ -30,7 +32,7 @@ class WebsiteConfigController
         ];
 
         $config = array_merge($defaults, ShopSetting::allAsMap($user->id));
-        $config['website_enabled'] = filter_var($config['website_enabled'], FILTER_VALIDATE_BOOLEAN);
+        $config['website_enabled'] = (bool) ($mainDatabase?->website_enabled ?? filter_var($config['website_enabled'], FILTER_VALIDATE_BOOLEAN));
         $config['website_share_url'] = rtrim(env('FRONTEND_URL', 'http://127.0.0.1:5173'), '/') . '/store/' . ($config['website_slug'] ?: $defaultSlug);
 
         return $config;
@@ -59,9 +61,8 @@ class WebsiteConfigController
         ]);
 
         if (isset($data['website_slug'])) {
-            $slugTaken = ShopSetting::query()
-                ->where('key', 'website_slug')
-                ->where('value', $data['website_slug'])
+            $slugTaken = TenantDatabase::query()
+                ->where('storefront_slug', $data['website_slug'])
                 ->where('user_id', '!=', $request->user()->id)
                 ->exists();
 
@@ -76,6 +77,11 @@ class WebsiteConfigController
         foreach ($data as $key => $value) {
             ShopSetting::set($key, is_bool($value) ? ($value ? '1' : '0') : $value, $request->user()->id);
         }
+
+        $request->user()->mainDatabase?->update([
+            'storefront_slug' => $data['website_slug'] ?? $request->user()->mainDatabase->storefront_slug,
+            'website_enabled' => $data['website_enabled'] ?? $request->user()->mainDatabase->website_enabled,
+        ]);
 
         return response()->json([
             'message' => 'Website configuration saved.',

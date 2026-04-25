@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class ShopSetting extends Model
+class ShopSetting extends TenantModel
 {
     protected $fillable = ['user_id', 'key', 'value'];
 

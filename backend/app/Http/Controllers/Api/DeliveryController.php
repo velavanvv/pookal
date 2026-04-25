@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Order;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class DeliveryController
 {
@@ -31,7 +32,7 @@ class DeliveryController
     {
         $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
-            'order_id' => ['required', 'integer', 'exists:orders,id'],
+            'order_id' => ['required', 'integer', Rule::exists('tenant.orders', 'id')],
             'status'   => ['required', 'string', 'in:dispatched,delivered'],
         ]);
 

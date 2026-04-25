@@ -7,6 +7,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ShopSetting;
 use App\Models\StockLedger;
+use Illuminate\Validation\Rule;
 use Illuminate\Http\Request;
 
 class OrderController
@@ -55,14 +56,22 @@ class OrderController
     {
         $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
-            'customer_id'        => ['nullable', 'integer', 'exists:customers,id'],
+            'customer_id'        => ['nullable', 'integer', Rule::exists('tenant.customers', 'id')],
             'channel'            => ['required', 'string', 'in:store,online,whatsapp'],
-            'branch_id'          => ['nullable', 'integer', 'exists:branches,id'],
+            'branch_id'          => ['nullable', 'integer', Rule::exists('platform.branches', 'id')],
             'items'              => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'items.*.product_id' => ['required', 'integer', Rule::exists('tenant.products', 'id')],
             'items.*.qty'        => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
+
+        if (! empty($data['branch_id'])) {
+            $branchBelongsToShop = \App\Models\Branch::where('id', $data['branch_id'])
+                ->where('user_id', $uid)
+                ->exists();
+
+            abort_unless($branchBelongsToShop, 403, 'Selected branch does not belong to your shop.');
+        }
 
         // Verify all products belong to this shop
         $productIds = collect($data['items'])->pluck('product_id');

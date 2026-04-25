@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Support\Tenancy\TenantProvisioner;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -10,6 +11,11 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController
 {
+    public function __construct(
+        private readonly TenantProvisioner $provisioner,
+    ) {
+    }
+
     public function register(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -20,9 +26,13 @@ class AuthController
 
         $user = User::create([
             'name' => $data['name'],
+            'role' => 'admin',
+            'shop_name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
         ]);
+
+        $this->provisioner->provisionMainDatabase($user);
 
         $token = $user->createToken('pookal-web')->plainTextToken;
 
@@ -59,19 +69,59 @@ class AuthController
 
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->load('subscription.plan', 'parentShop.subscription.plan');
-        // Staff users have no subscription — inherit the parent shop owner's plan
-        $sub  = $user->subscription ?? $user->parentShop?->subscription;
+        $user = $request->user()->load(
+            'subscription.plan',
+            'parentShop.subscription.plan',
+            'mainDatabase',
+            'branch.plan'  // branch users → their branch plan determines module access
+        );
+
+        // Module resolution priority:
+        // 1. Branch user  → branch.plan (if set), else parent shop subscription plan
+        // 2. Staff user   → parent shop subscription plan
+        // 3. Shop owner   → own subscription plan
+        $branchPlan   = $user->branch?->plan;
+        $sub          = $user->subscription ?? $user->parentShop?->subscription;
+        $mainDatabase = $user->mainDatabase ?? $user->parentShop?->mainDatabase;
+
+        if ($branchPlan) {
+            $subscriptionData = [
+                'plan_name' => $branchPlan->name,
+                'modules'   => $branchPlan->modules ?? [],
+                'max_users' => $branchPlan->max_users,
+                'status'    => $sub?->status ?? 'active',
+                'end_date'  => $sub?->end_date?->toDateString() ?? now()->addYear()->toDateString(),
+                'days_left' => $sub?->daysUntilRenewal() ?? 365,
+            ];
+        } elseif ($sub) {
+            $subscriptionData = [
+                'plan_name' => $sub->plan?->name,
+                'modules'   => $sub->plan?->modules ?? [],
+                'max_users' => $sub->plan?->max_users,
+                'status'    => $sub->status,
+                'end_date'  => $sub->end_date->toDateString(),
+                'days_left' => $sub->daysUntilRenewal(),
+            ];
+        } else {
+            $subscriptionData = null;
+        }
 
         return response()->json([
             'user' => array_merge($user->toArray(), [
-                'subscription' => $sub ? [
-                    'plan_name' => $sub->plan?->name,
-                    'modules'   => $sub->plan?->modules ?? [],
-                    'max_users' => $sub->plan?->max_users,
-                    'status'    => $sub->status,
-                    'end_date'  => $sub->end_date->toDateString(),
-                    'days_left' => $sub->daysUntilRenewal(),
+                'database' => $mainDatabase ? [
+                    'scope'           => $mainDatabase->scope,
+                    'label'           => $mainDatabase->label,
+                    'storefront_slug' => $mainDatabase->storefront_slug,
+                    'website_enabled' => $mainDatabase->website_enabled,
+                ] : null,
+                'subscription' => $subscriptionData,
+                // Branch users are locked to their branch — expose it to the frontend.
+                'locked_branch' => $user->branch ? [
+                    'id'      => $user->branch->id,
+                    'name'    => $user->branch->name,
+                    'code'    => $user->branch->code,
+                    'plan_id' => $user->branch->plan_id,
+                    'modules' => $branchPlan?->modules ?? null,
                 ] : null,
             ]),
         ]);

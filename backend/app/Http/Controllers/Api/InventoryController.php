@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Product;
 use App\Models\StockLedger;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class InventoryController
 {
@@ -36,7 +37,7 @@ class InventoryController
     {
         $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
-            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'product_id' => ['required', 'integer', Rule::exists('tenant.products', 'id')],
             'qty'        => ['required', 'integer', 'min:1'],
             'notes'      => ['nullable', 'string'],
         ]);
@@ -65,7 +66,7 @@ class InventoryController
     {
         $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
-            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'product_id' => ['required', 'integer', Rule::exists('tenant.products', 'id')],
             'qty_change' => ['required', 'integer'],
             'reason'     => ['nullable', 'string'],
         ]);

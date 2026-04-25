@@ -1,8 +1,7 @@
 <?php
 namespace App\Models;
-use Illuminate\Database\Eloquent\Model;
 
-class Farmer extends Model {
+class Farmer extends TenantModel {
     protected $fillable = [
         'user_id','name','phone','email','address',
         'payment_cycle','bank_name','account_number','ifsc_code',

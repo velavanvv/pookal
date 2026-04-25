@@ -3,14 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 
-class Order extends Model
+class Order extends TenantModel
 {
     use HasFactory;
 
     protected $fillable = [
         'user_id',
+        'branch_id',
         'order_number',
         'customer_id',
         'channel',
@@ -37,5 +37,10 @@ class Order extends Model
     public function items()
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
     }
 }
