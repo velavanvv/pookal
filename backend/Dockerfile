@@ -7,8 +7,10 @@ RUN apt-get update && apt-get install -y \
     && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/*
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+# Install Composer inside this layer so it always runs with PHP 8.4 (not the
+# composer:2 image's own PHP 8.2 which breaks composer install on lock file).
+RUN curl -sS https://getcomposer.org/installer \
+    | php -- --install-dir=/usr/local/bin --filename=composer
 
 WORKDIR /var/www/html
 
