@@ -1,69 +1,48 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { navigation } from '../../data/navigation';
 import { useAuth } from '../../features/auth/AuthContext';
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const isSuperAdmin = user?.role === 'superadmin';
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
+  const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+
   return (
-    <aside className="sidebar d-flex flex-column">
+    <aside className="sidebar">
       {/* Brand */}
-      <div className="sidebar__brand">
-        <span className="sidebar__badge">
-          {isSuperAdmin ? <i className="bi bi-shield-lock" style={{ fontSize: '1.1rem' }} /> : 'P'}
-        </span>
+      <div className="sb-brand">
+        <div className="sb-brand__logo">
+          <i className="bi bi-flower3" />
+        </div>
         <div>
-          <h1 className="sidebar__title">Pookal</h1>
-          <p className="sidebar__subtitle">
-            {isSuperAdmin ? 'Platform Admin' : 'Florist commerce suite'}
-          </p>
+          <div className="sb-brand__name">Pookal</div>
+          <div className="sb-brand__sub">{isSuperAdmin ? 'Platform Admin' : 'Florist Suite'}</div>
         </div>
       </div>
 
-      {/* User block */}
-      <div className="sidebar__user">
-        <strong>{user?.name || '—'}</strong>
-        <span>{user?.email}</span>
-        {isSuperAdmin && (
-          <span className="badge mt-1 text-bg-warning text-dark" style={{ fontSize: '0.7rem' }}>
-            Super Admin
-          </span>
-        )}
-        {!isSuperAdmin && user?.subscription && (
-          <span className={`badge mt-1 text-bg-${
-            user.subscription.status === 'active' ? 'success' :
-            user.subscription.status === 'trial'  ? 'info'    : 'warning'
-          }`} style={{ fontSize: '0.7rem' }}>
-            {user.subscription.plan_name} · {user.subscription.days_left}d left
-          </span>
-        )}
-      </div>
-
-      {/* Navigation */}
-      <nav className="nav flex-column gap-2 flex-grow-1">
+      {/* Nav */}
+      <nav className="sb-nav">
         {isSuperAdmin ? (
-          /* ── Superadmin sees only admin links ── */
-          <>
-            <NavLink
-              to="/admin"
-              className={({ isActive }) =>
-                `sidebar__link sidebar__link--admin ${isActive ? 'sidebar__link--active' : ''}`
-              }
-            >
-              <i className="bi bi-people-fill" />
-              <span>Customers</span>
-            </NavLink>
-          </>
+          <NavLink
+            to="/admin"
+            className={({ isActive }) => `sb-link sb-link--admin ${isActive ? 'sb-link--active' : ''}`}
+          >
+            <i className="bi bi-shield-lock" />
+            <span>Admin Panel</span>
+          </NavLink>
         ) : (
-          /* ── Regular users see shop nav ── */
-          navigation.map((item) => (
+          navigation.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) =>
-                `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
-              }
+              className={({ isActive }) => `sb-link ${isActive ? 'sb-link--active' : ''}`}
             >
               <i className={`bi ${item.icon}`} />
               <span>{item.label}</span>
@@ -72,15 +51,31 @@ export default function Sidebar() {
         )}
       </nav>
 
-      {/* Sign out */}
-      <button
-        className="sidebar__link text-start border-0 bg-transparent w-100"
-        style={{ color: 'rgba(255,255,255,0.6)' }}
-        onClick={logout}
-      >
-        <i className="bi bi-box-arrow-left" />
-        <span>Sign out</span>
-      </button>
+      {/* Subscription badge */}
+      {!isSuperAdmin && user?.subscription && (
+        <div style={{ padding: '0 0.75rem 0.5rem' }}>
+          <div style={{
+            background: user.subscription.status === 'active' ? 'rgba(22,163,74,0.12)' : 'rgba(217,119,6,0.12)',
+            color: user.subscription.status === 'active' ? '#4ade80' : '#fbbf24',
+            borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.75rem',
+            fontSize: '0.72rem', fontWeight: 600, textAlign: 'center',
+          }}>
+            {user.subscription.plan_name} · {user.subscription.days_left}d left
+          </div>
+        </div>
+      )}
+
+      {/* User */}
+      <div className="sb-user">
+        <div className="sb-user__avatar">{initials}</div>
+        <div className="sb-user__info">
+          <div className="sb-user__name">{user?.name || '—'}</div>
+          <div className="sb-user__email">{user?.email}</div>
+        </div>
+        <button className="sb-user__out" onClick={handleLogout} title="Sign out">
+          <i className="bi bi-box-arrow-right" />
+        </button>
+      </div>
     </aside>
   );
 }
