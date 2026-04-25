@@ -15,6 +15,7 @@ import WebsiteConfigPage from './features/website/WebsiteConfigPage';
 import StorefrontPage from './features/website/StorefrontPage';
 import AdminPage from './features/admin/AdminPage';
 import VendorPage from './features/vendor/VendorPage';
+import BranchesPage from './features/branches/BranchesPage';
 import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
 
@@ -46,7 +47,8 @@ export default function App() {
         <Route path="/delivery"  element={<ShopRoute><DeliveryPage /></ShopRoute>} />
         <Route path="/reports"   element={<ShopRoute><ReportsPage /></ShopRoute>} />
         <Route path="/website-config" element={<ShopRoute><WebsiteConfigPage /></ShopRoute>} />
-        <Route path="/vendor"        element={<ShopRoute><VendorPage /></ShopRoute>} />
+        <Route path="/vendor"    element={<ShopRoute><VendorPage /></ShopRoute>} />
+        <Route path="/branches"  element={<ShopRoute><BranchesPage /></ShopRoute>} />
         <Route path="/settings"  element={<ShopRoute><SettingsPage /></ShopRoute>} />
       </Route>
     </Routes>

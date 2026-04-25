@@ -9,7 +9,8 @@ class CrmController
 {
     public function customers(Request $request)
     {
-        $query = Customer::query();
+        $uid   = $request->user()->shopOwnerId();
+        $query = Customer::where('user_id', $uid);
 
         if ($segment = $request->query('segment')) {
             $query->where('segment', $segment);
@@ -26,6 +27,7 @@ class CrmController
 
     public function storeCustomer(Request $request)
     {
+        $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'name'              => ['required', 'string', 'max:255'],
             'phone'             => ['nullable', 'string', 'max:20'],
@@ -35,6 +37,7 @@ class CrmController
         ]);
 
         $customer = Customer::create(array_merge([
+            'user_id'           => $uid,
             'segment'           => 'regular',
             'loyalty_points'    => 0,
             'preferred_channel' => 'whatsapp',

@@ -7,6 +7,7 @@ export const navigation = [
   { path: '/delivery', label: 'Delivery', icon: 'bi-truck' },
   { path: '/reports', label: 'Reports', icon: 'bi-bar-chart' },
   { path: '/vendor', label: 'Vendor', icon: 'bi-person-badge' },
+  { path: '/branches', label: 'Branches', icon: 'bi-diagram-3' },
   { path: '/website-config', label: 'Website Config', icon: 'bi-globe2' },
   { path: '/settings', label: 'Settings', icon: 'bi-gear' }
 ];

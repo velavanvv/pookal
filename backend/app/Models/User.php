@@ -18,6 +18,7 @@ class User extends Authenticatable
         'phone',
         'email',
         'password',
+        'parent_user_id',
     ];
 
     protected $hidden = [
@@ -38,6 +39,20 @@ class User extends Authenticatable
         return $this->role === 'superadmin';
     }
 
+    public function isStaff(): bool
+    {
+        return $this->parent_user_id !== null;
+    }
+
+    /**
+     * Returns the shop-owner ID for tenant isolation.
+     * Staff users inherit their parent shop's data.
+     */
+    public function shopOwnerId(): int
+    {
+        return $this->parent_user_id ?? $this->id;
+    }
+
     public function subscription()
     {
         return $this->hasOne(Subscription::class)->latestOfMany();
@@ -56,5 +71,20 @@ class User extends Authenticatable
     public function shopSettings()
     {
         return $this->hasMany(ShopSetting::class);
+    }
+
+    public function branches()
+    {
+        return $this->hasMany(Branch::class);
+    }
+
+    public function parentShop()
+    {
+        return $this->belongsTo(User::class, 'parent_user_id');
+    }
+
+    public function staffMembers()
+    {
+        return $this->hasMany(User::class, 'parent_user_id');
     }
 }

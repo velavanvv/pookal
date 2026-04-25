@@ -7,9 +7,11 @@ use Illuminate\Http\Request;
 
 class DeliveryController
 {
-    public function board()
+    public function board(Request $request)
     {
+        $uid    = $request->user()->shopOwnerId();
         $orders = Order::with('customer')
+            ->where('user_id', $uid)
             ->whereIn('status', ['packed', 'dispatched', 'delivered'])
             ->orderBy('delivery_slot')
             ->get()
@@ -19,6 +21,7 @@ class DeliveryController
                 'customer_name' => $o->customer?->name,
                 'slot'          => $o->delivery_slot,
                 'status'        => $o->status,
+                'branch_name'   => $o->branch?->name,
             ]);
 
         return response()->json($orders);
@@ -26,12 +29,13 @@ class DeliveryController
 
     public function dispatch(Request $request)
     {
+        $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'order_id' => ['required', 'integer', 'exists:orders,id'],
             'status'   => ['required', 'string', 'in:dispatched,delivered'],
         ]);
 
-        $order = Order::findOrFail($data['order_id']);
+        $order = Order::where('id', $data['order_id'])->where('user_id', $uid)->firstOrFail();
         $order->update(['status' => $data['status']]);
 
         return response()->json(['message' => 'Dispatch updated.', 'order' => $order]);

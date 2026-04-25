@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use App\Models\ShopSetting;
 use App\Models\StockLedger;
 use Illuminate\Http\Request;
@@ -12,14 +13,16 @@ class OrderController
 {
     public function index(Request $request)
     {
+        $uid   = $request->user()->shopOwnerId();
         $query = Order::with('customer')
-            ->where(function ($q) use ($request) {
-                $q->where('user_id', $request->user()->id)
-                  ->orWhereNull('user_id');
-            });
+            ->where('user_id', $uid);
 
         if ($status = $request->query('status')) {
             $query->where('status', $status);
+        }
+
+        if ($branchId = $request->query('branch_id')) {
+            $query->where('branch_id', $branchId);
         }
 
         $orders = $query->orderBy('created_at', 'desc')->paginate(25);
@@ -32,6 +35,8 @@ class OrderController
                 'channel'            => $order->channel,
                 'status'             => $order->status,
                 'grand_total'        => $order->grand_total,
+                'branch_id'          => $order->branch_id,
+                'branch_name'        => $order->branch?->name,
                 'delivery_slot'      => $order->delivery_slot,
                 'delivery_date'      => $order->delivery_date,
                 'delivery_time_slot' => $order->delivery_time_slot,
@@ -48,22 +53,31 @@ class OrderController
 
     public function store(Request $request)
     {
+        $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'customer_id'        => ['nullable', 'integer', 'exists:customers,id'],
             'channel'            => ['required', 'string', 'in:store,online,whatsapp'],
+            'branch_id'          => ['nullable', 'integer', 'exists:branches,id'],
             'items'              => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
             'items.*.qty'        => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
         ]);
 
-        // ── Stock check (hard block — backend guard) ─────────────────────────
+        // Verify all products belong to this shop
+        $productIds = collect($data['items'])->pluck('product_id');
+        $owned = Product::where('user_id', $uid)->whereIn('id', $productIds)->pluck('id');
+        if ($owned->count() !== $productIds->unique()->count()) {
+            return response()->json(['message' => 'One or more products do not belong to your shop.'], 403);
+        }
+
+        // Stock check
         $stockErrors = [];
         foreach ($data['items'] as $item) {
             $latest  = StockLedger::where('product_id', $item['product_id'])->latest()->first();
             $balance = $latest ? $latest->balance_after : 0;
             if ($item['qty'] > $balance) {
-                $product = \App\Models\Product::find($item['product_id']);
+                $product       = Product::find($item['product_id']);
                 $stockErrors[] = ($product?->name ?? "Product #{$item['product_id']}")
                     . ": requested {$item['qty']}, available {$balance}";
             }
@@ -75,13 +89,14 @@ class OrderController
             ], 422);
         }
 
-        $taxRate    = (float) ShopSetting::get('tax_rate', 5) / 100;
+        $taxRate    = (float) ShopSetting::get('tax_rate', 5, $uid) / 100;
         $subtotal   = collect($data['items'])->sum(fn ($i) => $i['qty'] * $i['unit_price']);
         $taxTotal   = round($subtotal * $taxRate, 2);
         $grandTotal = $subtotal + $taxTotal;
 
         $order = Order::create([
-            'user_id'        => $request->user()->id,
+            'user_id'        => $uid,
+            'branch_id'      => $data['branch_id'] ?? null,
             'order_number'   => 'ORD-' . now()->format('YmdHis') . '-' . rand(100, 999),
             'customer_id'    => $data['customer_id'] ?? null,
             'channel'        => $data['channel'],
@@ -121,14 +136,15 @@ class OrderController
         ], 201);
     }
 
-    public function update(Request $request, string $order)
+    public function update(Request $request, string $id)
     {
-        $model = Order::findOrFail($order);
+        $uid   = $request->user()->shopOwnerId();
+        $model = Order::where('id', $id)->where('user_id', $uid)->firstOrFail();
         $data  = $request->validate([
             'status' => ['required', 'string', 'in:pending,packed,dispatched,delivered'],
         ]);
         $model->update($data);
 
-        return response()->json(['message' => "Order {$order} updated.", 'order' => $model]);
+        return response()->json(['message' => "Order {$id} updated.", 'order' => $model]);
     }
 }

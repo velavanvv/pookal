@@ -8,10 +8,14 @@ use Illuminate\Http\Request;
 
 class InventoryController
 {
-    public function index()
+    public function index(Request $request)
     {
-        $items = Product::with('latestStock')->get()->map(function ($p) {
-            return [
+        $uid = $request->user()->shopOwnerId();
+
+        $items = Product::where('user_id', $uid)
+            ->with('latestStock')
+            ->get()
+            ->map(fn ($p) => [
                 'id'              => $p->id,
                 'sku'             => $p->sku,
                 'name'            => $p->name,
@@ -23,19 +27,24 @@ class InventoryController
                 'track_freshness' => $p->track_freshness,
                 'image_url'       => $p->image_url,
                 'freshness_days'  => $p->freshness_days,
-            ];
-        });
+            ]);
 
         return response()->json($items);
     }
 
     public function receive(Request $request)
     {
+        $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'qty'        => ['required', 'integer', 'min:1'],
             'notes'      => ['nullable', 'string'],
         ]);
+
+        abort_if(
+            Product::where('id', $data['product_id'])->where('user_id', $uid)->doesntExist(),
+            403, 'Product does not belong to your shop.'
+        );
 
         $latest  = StockLedger::where('product_id', $data['product_id'])->latest()->first();
         $balance = $latest ? $latest->balance_after : 0;
@@ -54,11 +63,17 @@ class InventoryController
 
     public function adjust(Request $request)
     {
+        $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'qty_change' => ['required', 'integer'],
             'reason'     => ['nullable', 'string'],
         ]);
+
+        abort_if(
+            Product::where('id', $data['product_id'])->where('user_id', $uid)->doesntExist(),
+            403, 'Product does not belong to your shop.'
+        );
 
         $latest  = StockLedger::where('product_id', $data['product_id'])->latest()->first();
         $balance = $latest ? $latest->balance_after : 0;

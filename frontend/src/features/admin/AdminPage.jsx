@@ -339,7 +339,7 @@ export default function AdminPage() {
 
       {/* ── MODALS ── */}
       {showNewCustomer && (
-        <CustomerModal plans={plans} onClose={() => setShowNewCustomer(false)} onSaved={() => { setShowNewCustomer(false); fetchAll(); }} />
+        <CustomerModal plans={plans} tenants={tenants} onClose={() => setShowNewCustomer(false)} onSaved={() => { setShowNewCustomer(false); fetchAll(); }} />
       )}
       {showRenew && selectedTenant && (
         <RenewModal tenant={selectedTenant} plans={plans}
@@ -359,11 +359,13 @@ export default function AdminPage() {
 }
 
 // ── CustomerModal ──
-function CustomerModal({ plans, onClose, onSaved }) {
+function CustomerModal({ plans, tenants, onClose, onSaved }) {
+  const [type, setType] = useState('new_shop'); // 'new_shop' | 'staff'
   const [form, setForm] = useState({
     name: '', email: '', password: '', shop_name: '', phone: '',
     role: 'admin', plan_id: '', billing_cycle: 'yearly',
     start_date: new Date().toISOString().slice(0, 10), notes: '',
+    parent_user_id: '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState(null);
@@ -372,7 +374,7 @@ function CustomerModal({ plans, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError(null);
     try {
-      await api.post('/admin/tenants', form); onSaved();
+      await api.post('/admin/tenants', { ...form, type }); onSaved();
     } catch (err) {
       const errs = err?.response?.data?.errors;
       setError(errs ? Object.values(errs).flat().join(' ') : 'Failed to create customer.');
@@ -381,57 +383,96 @@ function CustomerModal({ plans, onClose, onSaved }) {
 
   const selectedPlan = plans.find((p) => String(p.id) === String(form.plan_id));
   const price = selectedPlan ? (form.billing_cycle === 'yearly' ? selectedPlan.price_yearly : selectedPlan.price_monthly) : null;
+  const shopOwners = (tenants || []).filter((t) => !t.parent_user_id && t.role !== 'superadmin');
 
   return (
     <PkModal title="Add New Customer" onClose={onClose} wide>
       <form onSubmit={handleSubmit}>
         <div className="pk-modal__body">
+          {/* Type toggle */}
+          <div style={{ display: 'flex', gap: '0.5rem', background: '#f4f4f5', borderRadius: 'var(--radius-md)', padding: '0.25rem', marginBottom: '1.25rem' }}>
+            {[['new_shop', 'bi-shop', 'New Shop'], ['staff', 'bi-person-plus', 'Add Staff to Existing Shop']].map(([val, icon, label]) => (
+              <button key={val} type="button" onClick={() => setType(val)}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.5rem 0.75rem', borderRadius: 'calc(var(--radius-md) - 2px)', border: 'none', fontSize: '0.83rem', fontWeight: 600, cursor: 'pointer', transition: 'all var(--transition)',
+                  background: type === val ? '#fff' : 'transparent',
+                  color: type === val ? 'var(--text-1)' : 'var(--text-2)',
+                  boxShadow: type === val ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
+                }}>
+                <i className={`bi ${icon}`} /> {label}
+              </button>
+            ))}
+          </div>
+
           {error && <div style={{ background: '#fee2e2', border: '1.5px solid #fca5a5', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#dc2626', marginBottom: '1rem' }}>{error}</div>}
-          <div className="pk-form-row">
-            <div className="pk-field"><label>Full Name *</label><input className="pk-input" value={form.name} onChange={(e) => set('name', e.target.value)} required /></div>
-            <div className="pk-field"><label>Email *</label><input type="email" className="pk-input" value={form.email} onChange={(e) => set('email', e.target.value)} required /></div>
-            <div className="pk-field"><label>Password *</label><input type="password" className="pk-input" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={8} /></div>
-            <div className="pk-field">
-              <label>Role</label>
-              <select className="pk-input" value={form.role} onChange={(e) => set('role', e.target.value)}>
-                <option value="admin">Admin</option>
-                <option value="staff">Staff</option>
-              </select>
-            </div>
-            <div className="pk-field"><label>Shop Name</label><input className="pk-input" value={form.shop_name} onChange={(e) => set('shop_name', e.target.value)} /></div>
-            <div className="pk-field"><label>Phone</label><input className="pk-input" value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
-          </div>
-          <div style={{ borderTop: '1.5px solid var(--border)', margin: '1rem 0 0.5rem', paddingTop: '0.75rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subscription</div>
-          <div className="pk-form-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-            <div className="pk-field">
-              <label>Plan *</label>
-              <select className="pk-input" value={form.plan_id} onChange={(e) => set('plan_id', e.target.value)} required>
-                <option value="">Select plan…</option>
-                {plans.filter((p) => p.is_active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div className="pk-field">
-              <label>Billing Cycle *</label>
-              <select className="pk-input" value={form.billing_cycle} onChange={(e) => set('billing_cycle', e.target.value)}>
-                <option value="yearly">Yearly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
-            <div className="pk-field"><label>Start Date *</label><input type="date" className="pk-input" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} required /></div>
-          </div>
-          {price !== null && (
-            <div style={{ background: '#dbeafe', border: '1.5px solid #93c5fd', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#1d4ed8', marginTop: '0.5rem' }}>
-              Amount: <strong>Rs. {Number(price).toLocaleString()}</strong> / {form.billing_cycle}
-              {selectedPlan && <span style={{ marginLeft: '1rem' }}>Modules: {(selectedPlan.modules || []).join(', ')}</span>}
-            </div>
+
+          {type === 'staff' ? (
+            <>
+              <div className="pk-field" style={{ marginBottom: '0.75rem' }}>
+                <label>Existing Shop *</label>
+                <select className="pk-input" value={form.parent_user_id} onChange={(e) => set('parent_user_id', e.target.value)} required>
+                  <option value="">Select shop…</option>
+                  {shopOwners.map((t) => <option key={t.id} value={t.id}>{t.shop_name || t.name} ({t.email})</option>)}
+                </select>
+              </div>
+              <div style={{ background: '#fefce8', border: '1.5px solid #fde68a', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#92400e', marginBottom: '1rem' }}>
+                Staff members share the same data as the shop owner. No new subscription is created.
+              </div>
+              <div className="pk-form-row">
+                <div className="pk-field"><label>Full Name *</label><input className="pk-input" value={form.name} onChange={(e) => set('name', e.target.value)} required /></div>
+                <div className="pk-field"><label>Email *</label><input type="email" className="pk-input" value={form.email} onChange={(e) => set('email', e.target.value)} required /></div>
+                <div className="pk-field"><label>Password *</label><input type="password" className="pk-input" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={8} /></div>
+                <div className="pk-field"><label>Phone</label><input className="pk-input" value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="pk-form-row">
+                <div className="pk-field"><label>Full Name *</label><input className="pk-input" value={form.name} onChange={(e) => set('name', e.target.value)} required /></div>
+                <div className="pk-field"><label>Email *</label><input type="email" className="pk-input" value={form.email} onChange={(e) => set('email', e.target.value)} required /></div>
+                <div className="pk-field"><label>Password *</label><input type="password" className="pk-input" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={8} /></div>
+                <div className="pk-field">
+                  <label>Role</label>
+                  <select className="pk-input" value={form.role} onChange={(e) => set('role', e.target.value)}>
+                    <option value="admin">Admin</option>
+                    <option value="staff">Staff</option>
+                  </select>
+                </div>
+                <div className="pk-field"><label>Shop Name</label><input className="pk-input" value={form.shop_name} onChange={(e) => set('shop_name', e.target.value)} /></div>
+                <div className="pk-field"><label>Phone</label><input className="pk-input" value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
+              </div>
+              <div style={{ borderTop: '1.5px solid var(--border)', margin: '1rem 0 0.5rem', paddingTop: '0.75rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subscription</div>
+              <div className="pk-form-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className="pk-field">
+                  <label>Plan *</label>
+                  <select className="pk-input" value={form.plan_id} onChange={(e) => set('plan_id', e.target.value)} required>
+                    <option value="">Select plan…</option>
+                    {plans.filter((p) => p.is_active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div className="pk-field">
+                  <label>Billing Cycle *</label>
+                  <select className="pk-input" value={form.billing_cycle} onChange={(e) => set('billing_cycle', e.target.value)}>
+                    <option value="yearly">Yearly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <div className="pk-field"><label>Start Date *</label><input type="date" className="pk-input" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} required /></div>
+              </div>
+              {price !== null && (
+                <div style={{ background: '#dbeafe', border: '1.5px solid #93c5fd', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#1d4ed8', marginTop: '0.5rem' }}>
+                  Amount: <strong>Rs. {Number(price).toLocaleString()}</strong> / {form.billing_cycle}
+                  {selectedPlan && <span style={{ marginLeft: '1rem' }}>Modules: {(selectedPlan.modules || []).join(', ')}</span>}
+                </div>
+              )}
+              <div className="pk-field" style={{ marginTop: '0.75rem' }}><label>Notes</label><textarea className="pk-input pk-textarea" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
+            </>
           )}
-          <div className="pk-field" style={{ marginTop: '0.75rem' }}><label>Notes</label><textarea className="pk-input pk-textarea" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
         </div>
         <div className="pk-modal__foot">
           <button type="button" className="pk-btn pk-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="pk-btn pk-btn--dark" disabled={saving}>
-            {saving ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-person-plus" />}
-            Create Customer
+            {saving ? <span className="spinner-border spinner-border-sm" /> : <i className={`bi ${type === 'staff' ? 'bi-person-check' : 'bi-shop'}`} />}
+            {type === 'staff' ? 'Add Staff Member' : 'Create Shop'}
           </button>
         </div>
       </form>

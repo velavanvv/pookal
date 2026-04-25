@@ -11,6 +11,8 @@ export default function PosPage() {
   const [submitting,   setSubmitting]   = useState(false);
   const [lastOrder,    setLastOrder]    = useState(null);
   const [shopSettings, setShopSettings] = useState({});
+  const [branches,     setBranches]     = useState([]);
+  const [branchId,     setBranchId]     = useState('');
   const receiptRef = useRef(null);
 
   const loadProducts = () =>
@@ -22,8 +24,10 @@ export default function PosPage() {
     Promise.all([
       loadProducts(),
       api.get('/settings'),
-    ]).then(([, settingsRes]) => {
+      api.get('/branches'),
+    ]).then(([, settingsRes, branchRes]) => {
       setShopSettings(settingsRes.data);
+      setBranches(branchRes.data || []);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -83,6 +87,7 @@ export default function PosPage() {
       const { data } = await api.post('/orders', {
         customer_id: customer?.id || null,
         channel:     'store',
+        branch_id:   branchId || null,
         items:       cart.map((c) => ({ product_id: c.product_id, qty: c.qty, unit_price: c.unit_price })),
       });
       setLastOrder({
@@ -224,6 +229,24 @@ export default function PosPage() {
               <button onClick={() => setCustomer(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', fontSize: '0.75rem' }}>
                 <i className="bi bi-x-lg" />
               </button>
+            </div>
+          )}
+
+          {/* Branch selector */}
+          {branches.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <i className="bi bi-shop" style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+              <select
+                className="pk-input"
+                style={{ flex: 1 }}
+                value={branchId}
+                onChange={(e) => setBranchId(e.target.value)}
+              >
+                <option value="">No branch (main)</option>
+                {branches.filter((b) => b.is_active).map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
             </div>
           )}
 

@@ -87,7 +87,7 @@ class AdminController
         if ($err = $this->requireSuperAdmin($request)) return $err;
 
         $tenants = User::where('role', '!=', 'superadmin')
-            ->with(['subscription.plan'])
+            ->with(['subscription.plan', 'parentShop'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(fn ($u) => $this->formatTenant($u));
@@ -99,6 +99,40 @@ class AdminController
     {
         if ($err = $this->requireSuperAdmin($request)) return $err;
 
+        $type = $request->input('type', 'new_shop'); // 'new_shop' | 'staff'
+
+        if ($type === 'staff') {
+            // Add a staff user to an existing shop
+            $data = $request->validate([
+                'name'           => ['required', 'string', 'max:120'],
+                'email'          => ['required', 'email', 'unique:users,email'],
+                'password'       => ['required', 'string', 'min:8'],
+                'phone'          => ['nullable', 'string', 'max:20'],
+                'parent_user_id' => ['required', 'exists:users,id'],
+            ]);
+
+            $parent = User::findOrFail($data['parent_user_id']);
+            if ($parent->isSuperAdmin()) {
+                return response()->json(['message' => 'Cannot add staff to super-admin.'], 422);
+            }
+
+            $user = User::create([
+                'name'           => $data['name'],
+                'email'          => $data['email'],
+                'password'       => Hash::make($data['password']),
+                'role'           => 'staff',
+                'phone'          => $data['phone'] ?? null,
+                'parent_user_id' => $data['parent_user_id'],
+                'shop_name'      => $parent->shop_name,
+            ]);
+
+            return response()->json([
+                'message' => 'Staff member added to shop.',
+                'tenant'  => $this->formatTenant($user->load('subscription.plan')),
+            ], 201);
+        }
+
+        // Default: create a new independent shop
         $data = $request->validate([
             'name'          => ['required', 'string', 'max:120'],
             'email'         => ['required', 'email', 'unique:users,email'],
@@ -121,12 +155,12 @@ class AdminController
             'phone'     => $data['phone'] ?? null,
         ]);
 
-        $plan     = Plan::findOrFail($data['plan_id']);
-        $start    = Carbon::parse($data['start_date']);
-        $end      = $data['billing_cycle'] === 'yearly' ? $start->copy()->addYear() : $start->copy()->addMonth();
-        $amount   = $data['billing_cycle'] === 'yearly' ? $plan->price_yearly : $plan->price_monthly;
+        $plan   = Plan::findOrFail($data['plan_id']);
+        $start  = Carbon::parse($data['start_date']);
+        $end    = $data['billing_cycle'] === 'yearly' ? $start->copy()->addYear() : $start->copy()->addMonth();
+        $amount = $data['billing_cycle'] === 'yearly' ? $plan->price_yearly : $plan->price_monthly;
 
-        $sub = Subscription::create([
+        Subscription::create([
             'user_id'           => $user->id,
             'plan_id'           => $plan->id,
             'status'            => 'active',
@@ -140,7 +174,7 @@ class AdminController
         ]);
 
         return response()->json([
-            'message' => 'Customer created.',
+            'message' => 'Shop created.',
             'tenant'  => $this->formatTenant($user->load('subscription.plan')),
         ], 201);
     }
@@ -323,6 +357,8 @@ class AdminController
             'shop_name'       => $u->shop_name,
             'phone'           => $u->phone,
             'role'            => $u->role,
+            'parent_user_id'  => $u->parent_user_id,
+            'parent_shop_name'=> $u->parentShop?->shop_name ?? $u->parentShop?->name,
             'created_at'      => $u->created_at,
             'website_enabled' => $webEnabled,
             'website_url'     => $webUrl,

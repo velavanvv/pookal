@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\VendorController;
 use App\Http\Controllers\Api\CrmController;
@@ -107,6 +108,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/sales',                              [VendorController::class, 'storeSale']);
         Route::patch('/sales/{sale}/status',               [VendorController::class, 'updateSaleStatus']);
         Route::delete('/sales/{sale}',                     [VendorController::class, 'deleteSale']);
+    });
+
+    // ── Branch routes ──────────────────────────────────────────────────────
+    Route::prefix('branches')->group(function () {
+        Route::get('/',             [BranchController::class, 'index']);
+        Route::post('/',            [BranchController::class, 'store']);
+        Route::patch('/{branch}',   [BranchController::class, 'update']);
+        Route::delete('/{branch}',  [BranchController::class, 'destroy']);
     });
 
     // ── Super-admin routes ──────────────────────────────────────────────────

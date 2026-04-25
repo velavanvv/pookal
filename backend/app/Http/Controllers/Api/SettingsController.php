@@ -8,13 +8,14 @@ use Illuminate\Http\Request;
 
 class SettingsController
 {
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        return response()->json(ShopSetting::allAsMap(request()->user()?->id));
+        return response()->json(ShopSetting::allAsMap($request->user()->shopOwnerId()));
     }
 
     public function update(Request $request): JsonResponse
     {
+        $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'shop_name'       => ['sometimes', 'string', 'max:120'],
             'shop_tagline'    => ['sometimes', 'string', 'max:200'],
@@ -29,12 +30,12 @@ class SettingsController
         ]);
 
         foreach ($data as $key => $value) {
-            ShopSetting::set($key, $value, $request->user()->id);
+            ShopSetting::set($key, $value, $uid);
         }
 
         return response()->json([
             'message'  => 'Settings saved successfully.',
-            'settings' => ShopSetting::allAsMap($request->user()->id),
+            'settings' => ShopSetting::allAsMap($uid),
         ]);
     }
 }

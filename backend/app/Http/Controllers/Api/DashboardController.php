@@ -4,21 +4,32 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Order;
 use App\Models\Product;
+use Illuminate\Http\Request;
 
 class DashboardController
 {
-    public function summary()
+    public function summary(Request $request)
     {
-        $salesToday = Order::whereDate('created_at', today())
+        $uid = $request->user()->shopOwnerId();
+
+        $salesToday = Order::where('user_id', $uid)
+            ->whereDate('created_at', today())
             ->whereIn('status', ['packed', 'dispatched', 'delivered'])
             ->sum('grand_total');
 
-        $pendingOrders = Order::where('status', 'pending')->count();
-        $deliveryQueue = Order::whereIn('status', ['packed', 'dispatched'])->count();
+        $pendingOrders = Order::where('user_id', $uid)
+            ->where('status', 'pending')
+            ->count();
 
-        $lowStock = Product::with('latestStock')->get()->filter(function ($p) {
-            return ($p->latestStock?->balance_after ?? 0) <= $p->reorder_level;
-        })->count();
+        $deliveryQueue = Order::where('user_id', $uid)
+            ->whereIn('status', ['packed', 'dispatched'])
+            ->count();
+
+        $lowStock = Product::where('user_id', $uid)
+            ->with('latestStock')
+            ->get()
+            ->filter(fn ($p) => ($p->latestStock?->balance_after ?? 0) <= $p->reorder_level)
+            ->count();
 
         return response()->json([
             'sales_today'    => number_format((float) $salesToday, 0, '.', ','),

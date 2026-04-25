@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Order;
 use App\Models\Product;
-use App\Models\StockLedger;
+use Illuminate\Http\Request;
 
 class ReportController
 {
-    public function sales()
+    public function sales(Request $request)
     {
+        $uid = $request->user()->shopOwnerId();
+
         $daily = Order::selectRaw('DATE(created_at) as date, COUNT(*) as orders, SUM(grand_total) as revenue')
+            ->where('user_id', $uid)
             ->where('created_at', '>=', now()->subDays(30))
             ->whereIn('status', ['packed', 'dispatched', 'delivered'])
             ->groupByRaw('DATE(created_at)')
@@ -26,6 +29,7 @@ class ReportController
         ];
 
         $channelBreakdown = Order::selectRaw('channel, COUNT(*) as orders, SUM(grand_total) as revenue')
+            ->where('user_id', $uid)
             ->where('created_at', '>=', now()->subDays(30))
             ->whereIn('status', ['packed', 'dispatched', 'delivered'])
             ->groupBy('channel')
@@ -38,12 +42,12 @@ class ReportController
         ]);
     }
 
-    public function inventory()
+    public function inventory(Request $request)
     {
-        $products = Product::with('latestStock')->get();
+        $uid      = $request->user()->shopOwnerId();
+        $products = Product::where('user_id', $uid)->with('latestStock')->get();
         $lowStock = $products->filter(fn ($p) => ($p->latestStock?->balance_after ?? 0) <= $p->reorder_level);
 
-        // Stock grouped by category
         $categoryBreakdown = $products->groupBy('category')->map(function ($items, $category) {
             return [
                 'category'    => $category,

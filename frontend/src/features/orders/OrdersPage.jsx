@@ -24,23 +24,32 @@ const NEXT = {
 };
 
 export default function OrdersPage() {
-  const [orders,  setOrders]  = useState([]);
-  const [status,  setStatus]  = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [orders,   setOrders]   = useState([]);
+  const [status,   setStatus]   = useState('all');
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState('');
+  const [loading,  setLoading]  = useState(true);
 
-  const fetchOrders = (s) => {
+  useEffect(() => {
+    api.get('/branches').then(({ data }) => setBranches(data || []));
+  }, []);
+
+  const fetchOrders = (s, bid) => {
     setLoading(true);
-    const q = s !== 'all' ? `?status=${s}` : '';
+    const params = [];
+    if (s !== 'all') params.push(`status=${s}`);
+    if (bid)         params.push(`branch_id=${bid}`);
+    const q = params.length ? `?${params.join('&')}` : '';
     api.get(`/orders${q}`)
       .then(({ data }) => setOrders(data.data || data))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchOrders(status); }, [status]);
+  useEffect(() => { fetchOrders(status, branchId); }, [status, branchId]);
 
   const advance = async (id, s) => {
     await api.patch(`/orders/${id}`, { status: s });
-    fetchOrders(status);
+    fetchOrders(status, branchId);
   };
 
   return (
@@ -50,6 +59,22 @@ export default function OrdersPage() {
           <h4 className="pg-title">Orders</h4>
           <p className="pg-sub">{orders.length} order{orders.length !== 1 ? 's' : ''} {status !== 'all' ? `· ${status}` : ''}</p>
         </div>
+        {branches.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <i className="bi bi-shop" style={{ color: 'var(--text-3)' }} />
+            <select
+              className="pk-input"
+              style={{ width: 180 }}
+              value={branchId}
+              onChange={(e) => setBranchId(e.target.value)}
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="pk-tabs">
@@ -83,6 +108,7 @@ export default function OrdersPage() {
                 <th>Order</th>
                 <th>Customer / Recipient</th>
                 <th>Channel</th>
+                <th>Branch</th>
                 <th>Status</th>
                 <th>Delivery</th>
                 <th>Total</th>
@@ -113,6 +139,12 @@ export default function OrdersPage() {
                       )}
                     </td>
                     <td><span className={`pk-badge ${cm.cls}`}>{cm.label}</span></td>
+                    <td>
+                      {o.branch_name
+                        ? <span className="pk-badge pk-badge--gray"><i className="bi bi-shop me-1" />{o.branch_name}</span>
+                        : <span style={{ color: 'var(--text-3)', fontSize: '0.78rem' }}>—</span>
+                      }
+                    </td>
                     <td><span className={`pk-badge ${sm.cls}`}>{sm.label}</span></td>
                     <td>
                       {o.delivery_date && <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{o.delivery_date}</div>}

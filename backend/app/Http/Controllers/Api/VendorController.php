@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 
 class VendorController
 {
-    private function uid(Request $r): int { return $r->user()->id; }
+    private function uid(Request $r): int { return $r->user()->shopOwnerId(); }
 
     // ══ FARMERS ══════════════════════════════════════════════════════════════
 
