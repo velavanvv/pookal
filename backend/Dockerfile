@@ -16,7 +16,7 @@ WORKDIR /var/www/html
 
 # Install PHP deps (cached layer)
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
+RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction --ignore-platform-req=php
 
 # Copy app source
 COPY . .

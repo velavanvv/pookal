@@ -2,6 +2,7 @@ services:
   - type: web
     name: pookal-backend
     runtime: docker
+    branch: feature/backend
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
