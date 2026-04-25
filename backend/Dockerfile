@@ -1,5 +1,8 @@
 FROM php:8.4-apache
 
+# Bust Render's layer cache when this value is incremented
+ARG CACHE_BUST=3
+
 # System dependencies — includes pdo_pgsql for Render PostgreSQL + pdo_sqlite for tenant DBs
 RUN apt-get update && apt-get install -y \
     libpq-dev libsqlite3-dev libzip-dev zip unzip git curl \
