@@ -1,8 +1,7 @@
 <?php
 namespace App\Models;
-use Illuminate\Database\Eloquent\Model;
 
-class BulkBuyer extends Model {
+class BulkBuyer extends TenantModel {
     protected $fillable = [
         'user_id','name','contact_person','phone','email',
         'address','type','notes','is_active',

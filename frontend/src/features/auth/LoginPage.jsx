@@ -8,8 +8,8 @@ export default function LoginPage() {
   const location = useLocation();
   const { login } = useAuth();
   const [values, setValues] = useState({
-    email: 'owner@pookal.test',
-    password: 'password123'
+    email: 'admin@pookal.com',
+    password: 'pookal123'
   });
   const [errors, setErrors] = useState({});
 

@@ -7,25 +7,21 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ShopSetting;
 use App\Models\StockLedger;
-use App\Models\User;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class StorefrontController
 {
     public function show(string $slug): JsonResponse
     {
-        $ownerId = ShopSetting::query()
-            ->where('key', 'website_slug')
-            ->where('value', $slug)
-            ->value('user_id');
-
-        abort_unless($ownerId, 404, 'Storefront not found.');
+        $tenant = TenantContext::current();
+        abort_unless($tenant, 404, 'Storefront not found.');
+        $ownerId = $tenant->user_id;
 
         $settings = ShopSetting::allAsMap($ownerId);
-        abort_unless(filter_var($settings['website_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN), 404, 'Storefront is disabled.');
-
-        $owner = User::findOrFail($ownerId);
+        abort_unless((bool) $tenant->website_enabled, 404, 'Storefront is disabled.');
         $products = Product::query()
             ->where('user_id', $ownerId)
             ->with('latestStock')
@@ -49,15 +45,15 @@ class StorefrontController
         return response()->json([
             'owner_id' => $ownerId,
             'store' => [
-                'name' => $settings['shop_name'] ?? $owner->shop_name ?? $owner->name,
+                'name' => $settings['shop_name'] ?? 'Pookal Store',
                 'tagline' => $settings['shop_tagline'] ?? 'Luxury blooms for meaningful celebrations.',
                 'banner_title' => $settings['website_banner_title'] ?? 'Send flowers beautifully',
                 'banner_subtitle' => $settings['website_banner_subtitle'] ?? 'A public storefront powered by your florist CRM.',
                 'intro' => $settings['website_intro'] ?? '',
                 'primary_color' => $settings['website_primary_color'] ?? '#7d294a',
                 'secondary_color' => $settings['website_secondary_color'] ?? '#25543a',
-                'phone' => $settings['website_contact_phone'] ?? $owner->phone,
-                'email' => $settings['website_contact_email'] ?? $owner->email,
+                'phone' => $settings['website_contact_phone'] ?? null,
+                'email' => $settings['website_contact_email'] ?? null,
                 'slug' => $slug,
             ],
             'products' => $products,
@@ -67,15 +63,12 @@ class StorefrontController
 
     public function placeOrder(Request $request, string $slug): JsonResponse
     {
-        $ownerId = ShopSetting::query()
-            ->where('key', 'website_slug')
-            ->where('value', $slug)
-            ->value('user_id');
-
-        abort_unless($ownerId, 404, 'Storefront not found.');
+        $tenant = TenantContext::current();
+        abort_unless($tenant, 404, 'Storefront not found.');
+        $ownerId = $tenant->user_id;
 
         $settings = ShopSetting::allAsMap($ownerId);
-        abort_unless(filter_var($settings['website_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN), 404, 'Storefront is disabled.');
+        abort_unless((bool) $tenant->website_enabled, 404, 'Storefront is disabled.');
 
         $data = $request->validate([
             'recipient_name'     => ['required', 'string', 'max:120'],
@@ -85,7 +78,7 @@ class StorefrontController
             'delivery_time_slot' => ['required', 'string', 'max:60'],
             'gift_message'       => ['nullable', 'string', 'max:300'],
             'items'              => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'items.*.product_id' => ['required', 'integer', Rule::exists('tenant.products', 'id')],
             'items.*.qty'        => ['required', 'integer', 'min:1'],
         ]);
 

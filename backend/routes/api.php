@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StorefrontController;
 use App\Http\Controllers\Api\WebsiteConfigController;
+use App\Http\Middleware\ResolveTenantContext;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'Pookal']));
@@ -24,10 +25,12 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
-Route::get('/storefront/{slug}', [StorefrontController::class, 'show']);
-Route::post('/storefront/{slug}/order', [StorefrontController::class, 'placeOrder']);
+Route::middleware(ResolveTenantContext::class)->group(function () {
+    Route::get('/storefront/{slug}', [StorefrontController::class, 'show']);
+    Route::post('/storefront/{slug}/order', [StorefrontController::class, 'placeOrder']);
+});
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
@@ -145,5 +148,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/tenants/{user}/suspend',          [AdminController::class, 'suspendSubscription']);
         Route::post('/tenants/{user}/website-toggle',   [AdminController::class, 'toggleWebsite']);
         Route::get('/subscriptions',                    [AdminController::class, 'listSubscriptions']);
+
+        // Branch users — created/deleted by superadmin only
+        Route::get('/branches/{branch}/users',          [AdminController::class, 'listBranchUsers']);
+        Route::post('/branches/{branch}/users',         [AdminController::class, 'storeBranchUser']);
+        Route::delete('/branches/{branch}/users/{user}',[AdminController::class, 'destroyBranchUser']);
     });
 });

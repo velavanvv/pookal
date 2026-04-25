@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Branch;
 use App\Models\Plan;
 use App\Models\ShopSetting;
 use App\Models\Subscription;
+use App\Models\TenantDatabase;
 use App\Models\User;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantProvisioner;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +18,12 @@ use Illuminate\Support\Str;
 
 class AdminController
 {
+    public function __construct(
+        private readonly TenantProvisioner $provisioner,
+        private readonly TenantConnectionManager $connections,
+    ) {
+    }
+
     // ── Guard ────────────────────────────────────────────────────────────────
 
     private function requireSuperAdmin(Request $request): ?JsonResponse
@@ -87,7 +97,7 @@ class AdminController
         if ($err = $this->requireSuperAdmin($request)) return $err;
 
         $tenants = User::where('role', '!=', 'superadmin')
-            ->with(['subscription.plan', 'parentShop'])
+            ->with(['subscription.plan', 'parentShop', 'mainDatabase'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(fn ($u) => $this->formatTenant($u));
@@ -154,6 +164,8 @@ class AdminController
             'shop_name' => $data['shop_name'] ?? null,
             'phone'     => $data['phone'] ?? null,
         ]);
+
+        $this->provisioner->provisionMainDatabase($user);
 
         $plan   = Plan::findOrFail($data['plan_id']);
         $start  = Carbon::parse($data['start_date']);
@@ -264,19 +276,27 @@ class AdminController
 
         $data = $request->validate(['enabled' => ['required', 'boolean']]);
 
+        $this->connections->activateMainForUser($user);
         ShopSetting::set('website_enabled', $data['enabled'] ? '1' : '0', $user->id);
+        $mainDatabase = $user->mainDatabase ?: $this->provisioner->provisionMainDatabase($user);
+        $slug = $mainDatabase->storefront_slug;
 
-        if ($data['enabled']) {
-            $existing = ShopSetting::get('website_slug', null, $user->id);
-            if (!$existing) {
-                $base = Str::slug($user->shop_name ?: $user->name ?: 'store');
-                $slug = $base;
-                $i    = 1;
-                while (ShopSetting::query()->where('key', 'website_slug')->where('value', $slug)->where('user_id', '!=', $user->id)->exists()) {
-                    $slug = $base . '-' . $i++;
-                }
-                ShopSetting::set('website_slug', $slug, $user->id);
+        if ($data['enabled'] && ! $slug) {
+            $base = Str::slug($user->shop_name ?: $user->name ?: 'store');
+            $slug = $base;
+            $i    = 1;
+            while (TenantDatabase::query()->where('storefront_slug', $slug)->where('user_id', '!=', $user->id)->exists()) {
+                $slug = $base . '-' . $i++;
             }
+        }
+
+        $mainDatabase->update([
+            'storefront_slug' => $slug,
+            'website_enabled' => $data['enabled'],
+        ]);
+
+        if ($slug) {
+            ShopSetting::set('website_slug', $slug, $user->id);
         }
 
         return response()->json([
@@ -340,14 +360,76 @@ class AdminController
         ]);
     }
 
+    // ── Branch users (created by superadmin, locked to a branch DB) ─────────
+
+    public function listBranchUsers(Request $request, Branch $branch): JsonResponse
+    {
+        if ($err = $this->requireSuperAdmin($request)) return $err;
+
+        $users = User::where('branch_id', $branch->id)->get();
+
+        return response()->json($users->map(fn (User $u) => [
+            'id'         => $u->id,
+            'name'       => $u->name,
+            'email'      => $u->email,
+            'phone'      => $u->phone,
+            'role'       => $u->role,
+            'created_at' => $u->created_at,
+        ]));
+    }
+
+    public function storeBranchUser(Request $request, Branch $branch): JsonResponse
+    {
+        if ($err = $this->requireSuperAdmin($request)) return $err;
+
+        $data = $request->validate([
+            'name'     => ['required', 'string', 'max:120'],
+            'email'    => ['required', 'email', 'unique:platform.users,email'],
+            'phone'    => ['nullable', 'string', 'max:20'],
+            'password' => ['required', 'string', 'min:6'],
+        ]);
+
+        $user = User::create([
+            'name'           => $data['name'],
+            'email'          => $data['email'],
+            'phone'          => $data['phone'] ?? null,
+            'password'       => Hash::make($data['password']),
+            'role'           => 'staff',
+            'shop_name'      => $branch->owner?->shop_name ?? $branch->name,
+            'parent_user_id' => $branch->user_id,
+            'branch_id'      => $branch->id,
+        ]);
+
+        return response()->json(['message' => 'Branch user created.', 'user' => [
+            'id'         => $user->id,
+            'name'       => $user->name,
+            'email'      => $user->email,
+            'phone'      => $user->phone,
+            'role'       => $user->role,
+            'created_at' => $user->created_at,
+        ]], 201);
+    }
+
+    public function destroyBranchUser(Request $request, Branch $branch, User $user): JsonResponse
+    {
+        if ($err = $this->requireSuperAdmin($request)) return $err;
+
+        abort_if($user->branch_id !== $branch->id, 404, 'User not found in this branch.');
+
+        $user->tokens()->delete();
+        $user->delete();
+
+        return response()->json(['message' => 'Branch user deleted.']);
+    }
+
     // ── Helper ───────────────────────────────────────────────────────────────
 
     private function formatTenant(User $u): array
     {
         $sub      = $u->subscription;
-        $settings = ShopSetting::allAsMap($u->id);
-        $webEnabled = filter_var($settings['website_enabled'] ?? false, FILTER_VALIDATE_BOOLEAN);
-        $webSlug    = $settings['website_slug'] ?? Str::slug($u->shop_name ?: $u->name ?: 'store');
+        $mainDatabase = $u->mainDatabase;
+        $webEnabled = (bool) ($mainDatabase?->website_enabled ?? false);
+        $webSlug    = $mainDatabase?->storefront_slug ?? Str::slug($u->shop_name ?: $u->name ?: 'store');
         $webUrl     = rtrim(env('FRONTEND_URL', 'http://127.0.0.1:5173'), '/') . '/store/' . $webSlug;
 
         return [
@@ -363,6 +445,12 @@ class AdminController
             'website_enabled' => $webEnabled,
             'website_url'     => $webUrl,
             'website_slug'    => $webSlug,
+            'database'        => $mainDatabase ? [
+                'label' => $mainDatabase->label,
+                'driver' => $mainDatabase->driver,
+                'scope' => $mainDatabase->scope,
+                'database' => $mainDatabase->database,
+            ] : null,
             'subscription' => $sub ? [
                 'id'                => $sub->id,
                 'plan_id'           => $sub->plan_id,

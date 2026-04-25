@@ -10,6 +10,7 @@ use App\Models\FarmerDelivery;
 use App\Models\FarmerPayment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class VendorController
 {
@@ -127,7 +128,7 @@ class VendorController
     public function storeDelivery(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'farmer_id'     => ['required', 'exists:farmers,id'],
+            'farmer_id'     => ['required', Rule::exists('tenant.farmers', 'id')],
             'flower_type'   => ['required', 'string', 'max:80'],
             'quantity'      => ['required', 'numeric', 'min:0.01'],
             'unit'          => ['required', 'in:kg,bunch,stems,boxes,nos'],
@@ -186,7 +187,7 @@ class VendorController
     public function generatePayment(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'farmer_id'    => ['required', 'exists:farmers,id'],
+            'farmer_id'    => ['required', Rule::exists('tenant.farmers', 'id')],
             'period_start' => ['required', 'date'],
             'period_end'   => ['required', 'date', 'after_or_equal:period_start'],
             'notes'        => ['nullable', 'string', 'max:300'],
@@ -305,7 +306,7 @@ class VendorController
     public function storeSale(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'bulk_buyer_id' => ['required', 'exists:bulk_buyers,id'],
+            'bulk_buyer_id' => ['required', Rule::exists('tenant.bulk_buyers', 'id')],
             'sale_date'     => ['required', 'date'],
             'discount'      => ['nullable', 'numeric', 'min:0'],
             'due_date'      => ['nullable', 'date'],

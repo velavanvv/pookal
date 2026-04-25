@@ -11,6 +11,8 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    protected $connection = 'platform';
+
     protected $fillable = [
         'name',
         'role',
@@ -19,6 +21,7 @@ class User extends Authenticatable
         'email',
         'password',
         'parent_user_id',
+        'branch_id',
     ];
 
     protected $hidden = [
@@ -44,9 +47,14 @@ class User extends Authenticatable
         return $this->parent_user_id !== null;
     }
 
+    public function isBranchUser(): bool
+    {
+        return $this->branch_id !== null;
+    }
+
     /**
      * Returns the shop-owner ID for tenant isolation.
-     * Staff users inherit their parent shop's data.
+     * Staff and branch users inherit their parent shop's data.
      */
     public function shopOwnerId(): int
     {
@@ -83,8 +91,23 @@ class User extends Authenticatable
         return $this->belongsTo(User::class, 'parent_user_id');
     }
 
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
     public function staffMembers()
     {
         return $this->hasMany(User::class, 'parent_user_id');
+    }
+
+    public function tenantDatabases()
+    {
+        return $this->hasMany(TenantDatabase::class);
+    }
+
+    public function mainDatabase()
+    {
+        return $this->hasOne(TenantDatabase::class)->where('scope', 'main')->whereNull('branch_id');
     }
 }

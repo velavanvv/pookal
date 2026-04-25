@@ -1,8 +1,7 @@
 <?php
 namespace App\Models;
-use Illuminate\Database\Eloquent\Model;
 
-class FarmerDelivery extends Model {
+class FarmerDelivery extends TenantModel {
     protected $fillable = [
         'user_id','farmer_id','flower_type','quantity','unit',
         'rate_per_unit','delivery_date','quality_grade','notes',

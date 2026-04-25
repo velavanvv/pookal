@@ -363,6 +363,7 @@ export default function AdminPage() {
       {showBranches && branchesTenant && (
         <TenantBranchesModal
           tenant={branchesTenant}
+          plans={plans}
           onClose={() => { setShowBranches(false); setBranchesTenant(null); }}
         />
       )}
@@ -451,12 +452,13 @@ function CustomerModal({ plans, onClose, onSaved }) {
   );
 }
 
-// ── TenantBranchesModal — superadmin manages branches for a specific tenant ──
-function TenantBranchesModal({ tenant, onClose }) {
-  const [branches, setBranches]   = useState([]);
-  const [loading,  setLoading]    = useState(true);
-  const [showForm, setShowForm]   = useState(false);
+// ── TenantBranchesModal — superadmin manages branches + branch users ─────────
+function TenantBranchesModal({ tenant, plans, onClose }) {
+  const [branches, setBranches]     = useState([]);
+  const [loading,  setLoading]      = useState(true);
+  const [showForm, setShowForm]     = useState(false);
   const [editBranch, setEditBranch] = useState(null);
+  const [expanded, setExpanded]     = useState(null); // branch id whose users are open
 
   const fetchBranches = () => {
     setLoading(true);
@@ -496,40 +498,47 @@ function TenantBranchesModal({ tenant, onClose }) {
             No branches yet. Add one above.
           </div>
         ) : (
-          <table className="pk-table">
-            <thead>
-              <tr><th>Branch</th><th>Manager</th><th>Phone</th><th>Status</th><th></th></tr>
-            </thead>
-            <tbody>
-              {branches.map(b => (
-                <tr key={b.id}>
-                  <td>
-                    <div style={{ fontWeight: 600 }}>{b.name}</div>
-                    {b.address && <div style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>{b.address}</div>}
-                  </td>
-                  <td style={{ color: 'var(--text-2)' }}>{b.manager_name || '—'}</td>
-                  <td style={{ color: 'var(--text-2)' }}>{b.phone || '—'}</td>
-                  <td><span className={`pk-badge ${b.is_active ? 'pk-badge--success' : 'pk-badge--gray'}`}>{b.is_active ? 'Active' : 'Inactive'}</span></td>
-                  <td>
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button className="pk-btn pk-btn--sm pk-btn--outline" onClick={() => { setEditBranch(b); setShowForm(true); }}>
-                        <i className="bi bi-pencil" />
-                      </button>
-                      <button className="pk-btn pk-btn--sm pk-btn--outline" style={{ color: '#dc2626', borderColor: '#fca5a5' }} onClick={() => handleDelete(b)}>
-                        <i className="bi bi-trash3" />
-                      </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {branches.map(b => (
+              <div key={b.id} style={{ border: '1.5px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                {/* Branch header row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'var(--surface-2)' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 'var(--radius-sm)', background: '#ffe4ef', color: 'var(--pookal-rose)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                    <i className="bi bi-shop" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{b.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>
+                      {b.manager_name && <span><i className="bi bi-person me-1" />{b.manager_name} · </span>}
+                      {b.phone && <span><i className="bi bi-telephone me-1" />{b.phone}</span>}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                  <span className={`pk-badge ${b.is_active ? 'pk-badge--success' : 'pk-badge--gray'}`}>{b.is_active ? 'Active' : 'Inactive'}</span>
+                  <button className="pk-btn pk-btn--sm pk-btn--outline" title="Branch logins" onClick={() => setExpanded(expanded === b.id ? null : b.id)}>
+                    <i className={`bi bi-people-fill`} /> Logins {expanded === b.id ? '▲' : '▼'}
+                  </button>
+                  <button className="pk-btn pk-btn--sm pk-btn--outline" onClick={() => { setEditBranch(b); setShowForm(true); }}>
+                    <i className="bi bi-pencil" />
+                  </button>
+                  <button className="pk-btn pk-btn--sm pk-btn--outline" style={{ color: '#dc2626', borderColor: '#fca5a5' }} onClick={() => handleDelete(b)}>
+                    <i className="bi bi-trash3" />
+                  </button>
+                </div>
+
+                {/* Expandable branch users section */}
+                {expanded === b.id && (
+                  <BranchUsersSection branch={b} />
+                )}
+              </div>
+            ))}
+          </div>
         )}
 
         {showForm && (
           <BranchForm
             tenantId={tenant.id}
             branch={editBranch}
+            plans={plans}
             onClose={() => setShowForm(false)}
             onSaved={() => { setShowForm(false); fetchBranches(); }}
           />
@@ -542,12 +551,109 @@ function TenantBranchesModal({ tenant, onClose }) {
   );
 }
 
-function BranchForm({ tenantId, branch, onClose, onSaved }) {
+// ── Branch users — locked login accounts for a specific branch ────────────────
+function BranchUsersSection({ branch }) {
+  const [users, setUsers]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [showAdd, setShowAdd]   = useState(false);
+  const [form, setForm]         = useState({ name: '', email: '', phone: '', password: '' });
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState('');
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const fetchUsers = () => {
+    setLoading(true);
+    api.get(`/admin/branches/${branch.id}/users`)
+      .then(({ data }) => setUsers(data))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchUsers(); }, [branch.id]);
+
+  const handleAdd = async (e) => {
+    e.preventDefault(); setSaving(true); setError('');
+    try {
+      await api.post(`/admin/branches/${branch.id}/users`, form);
+      setShowAdd(false);
+      setForm({ name: '', email: '', phone: '', password: '' });
+      fetchUsers();
+    } catch (err) {
+      setError(Object.values(err?.response?.data?.errors || {}).flat().join(' ') || 'Failed to create.');
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (u) => {
+    if (!confirm(`Remove login "${u.name}" from this branch?`)) return;
+    await api.delete(`/admin/branches/${branch.id}/users/${u.id}`);
+    fetchUsers();
+  };
+
+  return (
+    <div style={{ padding: '0.85rem 1rem', background: '#fafafa', borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-2)' }}>
+          <i className="bi bi-lock me-1" />Branch Login Accounts
+        </span>
+        <button className="pk-btn pk-btn--sm pk-btn--outline" onClick={() => setShowAdd(v => !v)}>
+          <i className="bi bi-person-plus" /> Add Login
+        </button>
+      </div>
+
+      {showAdd && (
+        <form onSubmit={handleAdd} style={{ background: '#fff', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '0.75rem' }}>
+          {error && <div style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.6rem', fontSize: '0.78rem', marginBottom: '0.5rem' }}>{error}</div>}
+          <div className="pk-form-row" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="pk-field"><label>Name *</label><input className="pk-input" value={form.name} onChange={e => set('name', e.target.value)} required /></div>
+            <div className="pk-field"><label>Email *</label><input className="pk-input" type="email" value={form.email} onChange={e => set('email', e.target.value)} required /></div>
+            <div className="pk-field"><label>Phone</label><input className="pk-input" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+            <div className="pk-field"><label>Password *</label><input className="pk-input" type="password" value={form.password} onChange={e => set('password', e.target.value)} required minLength={6} /></div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.4rem' }}>
+            <button type="button" className="pk-btn pk-btn--ghost pk-btn--sm" onClick={() => setShowAdd(false)}>Cancel</button>
+            <button type="submit" className="pk-btn pk-btn--rose pk-btn--sm" disabled={saving}>
+              {saving ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-check-lg" />}
+              Create Login
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-3)', padding: '0.5rem 0' }}>Loading…</div>
+      ) : users.length === 0 ? (
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-3)', padding: '0.4rem 0' }}>
+          No branch logins yet. Add one so staff can log in directly to this branch.
+        </div>
+      ) : (
+        <table className="pk-table" style={{ fontSize: '0.82rem' }}>
+          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th></th></tr></thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id}>
+                <td style={{ fontWeight: 600 }}>{u.name}</td>
+                <td style={{ color: 'var(--text-2)' }}>{u.email}</td>
+                <td style={{ color: 'var(--text-2)' }}>{u.phone || '—'}</td>
+                <td>
+                  <button className="pk-btn pk-btn--sm pk-btn--outline" style={{ color: '#dc2626', borderColor: '#fca5a5' }} onClick={() => handleDelete(u)}>
+                    <i className="bi bi-trash3" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function BranchForm({ tenantId, branch, plans = [], onClose, onSaved }) {
   const [form, setForm] = useState({
     name:         branch?.name         || '',
     address:      branch?.address      || '',
     phone:        branch?.phone        || '',
     manager_name: branch?.manager_name || '',
+    plan_id:      branch?.plan_id      || '',
     is_active:    branch?.is_active    ?? true,
   });
   const [saving, setSaving] = useState(false);
@@ -557,13 +663,16 @@ function BranchForm({ tenantId, branch, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError('');
     try {
-      if (branch) await api.patch(`/branches/${branch.id}`, form);
-      else        await api.post('/branches', { ...form, user_id: tenantId });
+      const payload = { ...form, plan_id: form.plan_id || null };
+      if (branch) await api.patch(`/branches/${branch.id}`, payload);
+      else        await api.post('/branches', { ...payload, user_id: tenantId });
       onSaved();
     } catch (err) {
       setError(Object.values(err?.response?.data?.errors || {}).flat().join(' ') || 'Failed to save.');
     } finally { setSaving(false); }
   };
+
+  const selectedPlan = plans.find(p => String(p.id) === String(form.plan_id));
 
   return (
     <div style={{ marginTop: '1rem', background: '#f8f8f8', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
@@ -585,7 +694,26 @@ function BranchForm({ tenantId, branch, onClose, onSaved }) {
           </div>
         </div>
         <div className="pk-field"><label>Address</label><textarea className="pk-input pk-textarea" rows={2} value={form.address} onChange={e => set('address', e.target.value)} /></div>
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+
+        {/* Branch plan — controls which modules branch login users can access */}
+        <div className="pk-field" style={{ marginTop: '0.5rem' }}>
+          <label>Branch Plan <span style={{ fontWeight: 400, color: 'var(--text-3)', fontSize: '0.75rem' }}>(controls module access for branch login users)</span></label>
+          <select className="pk-input" value={form.plan_id} onChange={e => set('plan_id', e.target.value)}>
+            <option value="">— Inherit parent shop plan —</option>
+            {plans.filter(p => p.is_active).map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          {selectedPlan && (
+            <div style={{ marginTop: '0.35rem', display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+              {(selectedPlan.modules || []).map(m => (
+                <span key={m} className="pk-badge pk-badge--info" style={{ fontSize: '0.7rem' }}>{m}</span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
           <button type="button" className="pk-btn pk-btn--ghost pk-btn--sm" onClick={onClose}>Cancel</button>
           <button type="submit" className="pk-btn pk-btn--rose pk-btn--sm" disabled={saving}>
             {saving ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-check-lg" />}

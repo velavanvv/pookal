@@ -47,6 +47,7 @@ export default function BranchesPage() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{b.name}</div>
+                    {b.code && <div style={{ fontSize: '0.75rem', color: 'var(--text-2)', fontFamily: 'monospace' }}>{b.code}</div>}
                     <span className={`pk-badge ${b.is_active ? 'pk-badge--success' : 'pk-badge--gray'}`} style={{ marginTop: '0.2rem', display: 'inline-block' }}>
                       {b.is_active ? 'Active' : 'Inactive'}
                     </span>
@@ -67,6 +68,11 @@ export default function BranchesPage() {
                 {b.address && (
                   <div style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>
                     <i className="bi bi-geo-alt me-2" />{b.address}
+                  </div>
+                )}
+                {b.database?.database && (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-3)', fontFamily: 'monospace' }}>
+                    <i className="bi bi-hdd-network me-2" />{b.database.database}
                   </div>
                 )}
               </div>

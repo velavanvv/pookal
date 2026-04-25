@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-
-class StockLedger extends Model
+class StockLedger extends TenantModel
 {
     protected $table = 'stock_ledger';
 

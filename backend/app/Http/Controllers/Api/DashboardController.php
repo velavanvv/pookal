@@ -32,7 +32,7 @@ class DashboardController
             ->count();
 
         return response()->json([
-            'sales_today'    => number_format((float) $salesToday, 0, '.', ','),
+            'sales_today'    => round((float) $salesToday, 2),
             'pending_orders' => $pendingOrders,
             'delivery_queue' => $deliveryQueue,
             'low_stock'      => $lowStock,

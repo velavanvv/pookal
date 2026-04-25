@@ -14,8 +14,14 @@ export function BranchProvider({ children }) {
 
   const switchBranch = (branch) => {
     setActiveBranch(branch);
-    if (branch) localStorage.setItem('pookal_branch', JSON.stringify(branch));
-    else localStorage.removeItem('pookal_branch');
+    if (branch) {
+      localStorage.setItem('pookal_branch', JSON.stringify(branch));
+      // api.js reads this key on every request to set X-Pookal-Branch-Code header
+      localStorage.setItem('pookal_branch_code', branch.code);
+    } else {
+      localStorage.removeItem('pookal_branch');
+      localStorage.removeItem('pookal_branch_code');
+    }
   };
 
   return (

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CatalogController
 {
@@ -36,7 +37,7 @@ class CatalogController
         $uid  = $request->user()->shopOwnerId();
         $data = $request->validate([
             'name'            => ['required', 'string', 'max:255'],
-            'sku'             => ['required', 'string', 'unique:products,sku'],
+            'sku'             => ['required', 'string', Rule::unique('tenant.products', 'sku')],
             'category'        => ['required', 'string'],
             'price'           => ['required', 'numeric', 'min:0'],
             'unit'            => ['nullable', 'string'],
