@@ -12,9 +12,10 @@ if [ $MIGRATE_STATUS -eq 0 ]; then
   php artisan db:seed --class=DatabaseSeeder --force || echo "⚠ Seeding failed (non-fatal)"
 fi
 
-echo "→ Clearing caches..."
-php artisan config:clear || true
-php artisan route:clear  || true
+echo "→ Caching config and routes..."
+php artisan config:cache  || true
+php artisan route:cache   || true
+php artisan view:cache    || true
 
 echo "→ Starting Apache..."
 exec apache2-foreground
