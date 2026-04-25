@@ -31,15 +31,15 @@ RUN mkdir -p \
     && chown -R www-data:www-data storage bootstrap/cache database/tenants \
     && chmod -R 775 storage bootstrap/cache database/tenants
 
-# Apache: serve from /public
+# Apache: serve from /public, pipe errors to stderr so Render captures them
 RUN echo '<VirtualHost *:80>\n\
     DocumentRoot /var/www/html/public\n\
     <Directory /var/www/html/public>\n\
         AllowOverride All\n\
         Require all granted\n\
     </Directory>\n\
-    ErrorLog ${APACHE_LOG_DIR}/error.log\n\
-    CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
+    ErrorLog /dev/stderr\n\
+    CustomLog /dev/stdout combined\n\
 </VirtualHost>' > /etc/apache2/sites-enabled/000-default.conf
 
 EXPOSE 80
