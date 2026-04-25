@@ -10,18 +10,25 @@ class BranchController
 {
     public function index(Request $request): JsonResponse
     {
-        $uid      = $request->user()->shopOwnerId();
-        $branches = Branch::where('user_id', $uid)
-            ->orderBy('name')
-            ->get();
+        $user = $request->user();
+
+        if ($user->isSuperAdmin()) {
+            $tenantId = $request->query('user_id');
+            abort_if(! $tenantId, 422, 'user_id query param required.');
+            $branches = Branch::where('user_id', $tenantId)->orderBy('name')->get();
+        } else {
+            $branches = Branch::where('user_id', $user->shopOwnerId())->orderBy('name')->get();
+        }
 
         return response()->json($branches);
     }
 
     public function store(Request $request): JsonResponse
     {
-        $uid  = $request->user()->shopOwnerId();
+        abort_if(! $request->user()->isSuperAdmin(), 403, 'Only super-admin can create branches.');
+
         $data = $request->validate([
+            'user_id'      => ['required', 'exists:users,id'],
             'name'         => ['required', 'string', 'max:120'],
             'address'      => ['nullable', 'string', 'max:300'],
             'phone'        => ['nullable', 'string', 'max:20'],
@@ -29,15 +36,14 @@ class BranchController
             'is_active'    => ['nullable', 'boolean'],
         ]);
 
-        $branch = Branch::create([...$data, 'user_id' => $uid]);
+        $branch = Branch::create($data);
 
         return response()->json(['message' => 'Branch created.', 'branch' => $branch], 201);
     }
 
     public function update(Request $request, Branch $branch): JsonResponse
     {
-        $uid = $request->user()->shopOwnerId();
-        abort_if($branch->user_id !== $uid, 403, 'Forbidden.');
+        abort_if(! $request->user()->isSuperAdmin(), 403, 'Only super-admin can update branches.');
 
         $data = $request->validate([
             'name'         => ['sometimes', 'string', 'max:120'],
@@ -54,8 +60,7 @@ class BranchController
 
     public function destroy(Request $request, Branch $branch): JsonResponse
     {
-        $uid = $request->user()->shopOwnerId();
-        abort_if($branch->user_id !== $uid, 403, 'Forbidden.');
+        abort_if(! $request->user()->isSuperAdmin(), 403, 'Only super-admin can delete branches.');
 
         $branch->delete();
 

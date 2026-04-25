@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\BranchController;
+use App\Http\Controllers\Api\ShopStaffController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\VendorController;
 use App\Http\Controllers\Api\CrmController;
@@ -110,12 +111,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/sales/{sale}',                     [VendorController::class, 'deleteSale']);
     });
 
-    // ── Branch routes ──────────────────────────────────────────────────────
+    // ── Branch routes (write: superadmin only; read: any auth user) ───────
     Route::prefix('branches')->group(function () {
         Route::get('/',             [BranchController::class, 'index']);
         Route::post('/',            [BranchController::class, 'store']);
         Route::patch('/{branch}',   [BranchController::class, 'update']);
         Route::delete('/{branch}',  [BranchController::class, 'destroy']);
+    });
+
+    // ── Shop staff routes (shop admin manages their own staff) ─────────────
+    Route::prefix('shop')->group(function () {
+        Route::get('/staff',              [ShopStaffController::class, 'index']);
+        Route::post('/staff',             [ShopStaffController::class, 'store']);
+        Route::patch('/staff/{staffUser}', [ShopStaffController::class, 'update']);
+        Route::delete('/staff/{staffUser}',[ShopStaffController::class, 'destroy']);
     });
 
     // ── Super-admin routes ──────────────────────────────────────────────────

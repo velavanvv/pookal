@@ -59,14 +59,16 @@ class AuthController
 
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->load('subscription.plan');
-        $sub  = $user->subscription;
+        $user = $request->user()->load('subscription.plan', 'parentShop.subscription.plan');
+        // Staff users have no subscription — inherit the parent shop owner's plan
+        $sub  = $user->subscription ?? $user->parentShop?->subscription;
 
         return response()->json([
             'user' => array_merge($user->toArray(), [
                 'subscription' => $sub ? [
                     'plan_name' => $sub->plan?->name,
                     'modules'   => $sub->plan?->modules ?? [],
+                    'max_users' => $sub->plan?->max_users,
                     'status'    => $sub->status,
                     'end_date'  => $sub->end_date->toDateString(),
                     'days_left' => $sub->daysUntilRenewal(),
