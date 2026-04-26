@@ -12,6 +12,11 @@ if [ $MIGRATE_STATUS -eq 0 ]; then
   php artisan db:seed --class=DatabaseSeeder --force || echo "⚠ Seeding failed (non-fatal)"
 fi
 
+# Entrypoint runs as root; fix ownership so Apache (www-data) can read/write
+# storage, bootstrap cache, and SQLite tenant DB files created during seeding.
+chown -R www-data:www-data storage bootstrap/cache database/tenants 2>/dev/null || true
+chmod -R 775 storage bootstrap/cache database/tenants 2>/dev/null || true
+
 echo "→ Caching config and routes..."
 php artisan config:cache  || true
 php artisan route:cache   || true
