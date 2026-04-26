@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,8 +18,9 @@ class ShopStaffController
     public function index(Request $request): JsonResponse
     {
         $staff = User::where('parent_user_id', $this->ownerId($request))
+            ->with('branch:id,name,code')
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'phone', 'role', 'created_at']);
+            ->get(['id', 'name', 'email', 'phone', 'role', 'branch_id', 'created_at']);
 
         return response()->json($staff);
     }
@@ -34,7 +36,8 @@ class ShopStaffController
         $maxUsers = $owner->subscription?->plan?->max_users;
 
         if ($maxUsers !== null) {
-            $currentCount = 1 + User::where('parent_user_id', $ownerId)->count();
+            // Only count main-shop users (no branch_id) toward the main plan limit
+            $currentCount = 1 + User::where('parent_user_id', $ownerId)->whereNull('branch_id')->count();
             if ($currentCount >= $maxUsers) {
                 return response()->json([
                     'message' => "Your plan allows a maximum of {$maxUsers} user(s). Upgrade your plan to add more staff.",
@@ -61,7 +64,53 @@ class ShopStaffController
 
         return response()->json([
             'message' => 'Staff member added.',
-            'staff'   => $staff->only(['id', 'name', 'email', 'phone', 'role', 'created_at']),
+            'staff'   => $staff->only(['id', 'name', 'email', 'phone', 'role', 'branch_id', 'created_at']),
+        ], 201);
+    }
+
+    public function storeBranchStaff(Request $request, Branch $branch): JsonResponse
+    {
+        $user    = $request->user();
+        $ownerId = $this->ownerId($request);
+        abort_if($user->isStaff(), 403, 'Staff members cannot create other staff.');
+        abort_if($branch->user_id !== $ownerId, 403, 'Branch does not belong to your shop.');
+
+        $branch->load('plan');
+        $owner    = User::with('subscription.plan')->findOrFail($ownerId);
+        $maxUsers = $branch->plan?->max_users ?? $owner->subscription?->plan?->max_users;
+
+        if ($maxUsers !== null) {
+            $currentCount = User::where('parent_user_id', $ownerId)
+                ->where('branch_id', $branch->id)
+                ->count();
+            if ($currentCount >= $maxUsers) {
+                return response()->json([
+                    'message' => "Branch plan allows a maximum of {$maxUsers} user(s).",
+                ], 422);
+            }
+        }
+
+        $data = $request->validate([
+            'name'     => ['required', 'string', 'max:120'],
+            'email'    => ['required', 'email', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+            'phone'    => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $staff = User::create([
+            'name'           => $data['name'],
+            'email'          => $data['email'],
+            'password'       => Hash::make($data['password']),
+            'phone'          => $data['phone'] ?? null,
+            'role'           => 'staff',
+            'shop_name'      => $branch->name,
+            'parent_user_id' => $ownerId,
+            'branch_id'      => $branch->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Branch staff member added.',
+            'staff'   => $staff->only(['id', 'name', 'email', 'phone', 'role', 'branch_id', 'created_at']),
         ], 201);
     }
 
@@ -84,7 +133,7 @@ class ShopStaffController
 
         return response()->json([
             'message' => 'Staff member updated.',
-            'staff'   => $staffUser->only(['id', 'name', 'email', 'phone', 'role', 'created_at']),
+            'staff'   => $staffUser->only(['id', 'name', 'email', 'phone', 'role', 'branch_id', 'created_at']),
         ]);
     }
 

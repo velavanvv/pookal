@@ -124,10 +124,11 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
 
     // ── Shop staff routes (shop admin manages their own staff) ─────────────
     Route::prefix('shop')->group(function () {
-        Route::get('/staff',              [ShopStaffController::class, 'index']);
-        Route::post('/staff',             [ShopStaffController::class, 'store']);
-        Route::patch('/staff/{staffUser}', [ShopStaffController::class, 'update']);
-        Route::delete('/staff/{staffUser}',[ShopStaffController::class, 'destroy']);
+        Route::get('/staff',                          [ShopStaffController::class, 'index']);
+        Route::post('/staff',                         [ShopStaffController::class, 'store']);
+        Route::post('/staff/branch/{branch}',         [ShopStaffController::class, 'storeBranchStaff']);
+        Route::patch('/staff/{staffUser}',            [ShopStaffController::class, 'update']);
+        Route::delete('/staff/{staffUser}',           [ShopStaffController::class, 'destroy']);
     });
 
     // ── Super-admin routes ──────────────────────────────────────────────────
