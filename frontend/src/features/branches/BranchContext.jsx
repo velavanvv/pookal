@@ -1,8 +1,12 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { useAuth } from '../auth/AuthContext';
 
 const BranchContext = createContext(null);
 
 export function BranchProvider({ children }) {
+  const { user } = useAuth();
+  const prevUserRef = useRef(user?.id);
+
   const [activeBranch, setActiveBranch] = useState(() => {
     try {
       const saved = localStorage.getItem('pookal_branch');
@@ -11,6 +15,14 @@ export function BranchProvider({ children }) {
       return null;
     }
   });
+
+  // Reset branch context whenever the logged-in user changes (or on logout).
+  useEffect(() => {
+    if (prevUserRef.current !== user?.id) {
+      prevUserRef.current = user?.id;
+      setActiveBranch(null);
+    }
+  }, [user?.id]);
 
   const switchBranch = (branch) => {
     setActiveBranch(branch);

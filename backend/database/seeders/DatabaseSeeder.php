@@ -2,68 +2,40 @@
 
 /**
  * ════════════════════════════════════════════════════════════════════════════════
- *  POOKAL MULTI-TENANT ARCHITECTURE  (Shopify / Square model)
+ *  POOKAL DEMO SEED
  * ════════════════════════════════════════════════════════════════════════════════
  *
- *  TWO DATABASE LAYERS
+ *  LOGIN CREDENTIALS
  *  ─────────────────────────────────────────────────────────────────────────────
- *  1. PLATFORM DB  (one shared database — connection: 'platform')
- *     Who manages it: SuperAdmin only
- *     Tables : users, plans, subscriptions, branches, tenant_databases
- *     Models : User, Plan, Subscription, Branch, TenantDatabase  (extend PlatformModel)
+ *  superadmin@pookal.com  /  super@pookal   → Platform admin (no shop data)
+ *  admin@pookal.com       /  pookal123      → Shop owner — T. Nagar main shop
+ *  staff@pookal.com       /  pookal123      → Main-shop staff  (same data as admin)
+ *  annanagar@pookal.com   /  pookal123      → Anna Nagar branch ONLY (locked)
  *
- *  2. TENANT DB  (one SQLite/MySQL file per shop — connection: 'tenant')
- *     Who manages it: Shop Admin + Staff
- *     Tables : products, customers, orders, order_items, stock_ledger,
- *              shop_settings, farmers, farmer_deliveries, farmer_payments,
- *              bulk_buyers, bulk_sales, bulk_sale_items
- *     Models : Product, Customer, Order … (extend TenantModel)
- *     Path   : storage/app/tenants/shop-{user_id}/main.sqlite
- *
- *  USER HIERARCHY
+ *  WHAT EACH USER SEES
  *  ─────────────────────────────────────────────────────────────────────────────
- *  SuperAdmin  (role = 'superadmin')
- *    │  Lives only in platform DB.
- *    │  Can: create/edit/delete shops, branches, plans, subscriptions.
- *    │  Cannot: access any shop's operational data.
- *    │
- *    └─► Shop Admin  (role = 'admin', parent_user_id = null)
- *          │  One per shop. Has a TenantDatabase (the shop's data silo).
- *          │  Can: manage products, customers, orders, staff, vendor, reports.
- *          │  Can: view branch reports and switch branch context.
- *          │
- *          └─► Staff  (role = 'staff', parent_user_id = shop_admin.id)
- *                Created by the Shop Admin (within plan max_users limit).
- *                Inherits parent's TenantDatabase and plan modules.
- *                Cannot: manage users, branches, subscriptions.
+ *  admin / staff  → main.sqlite  → shop_name "Pookal Flowers"
+ *                                  20 products · 15 customers · 30 orders
+ *                                  3 farmers · 3 bulk buyers
  *
- *  BRANCH SYSTEM
- *  ─────────────────────────────────────────────────────────────────────────────
- *  • A Branch is a physical location under a shop.
- *  • Created ONLY by SuperAdmin (via AdminPage → tenant row → Branches button).
- *  • Each branch gets its own TenantDatabase row (scope='branch').
- *  • Orders carry an optional branch_id to tag which location made the sale.
- *  • Shop admin can filter all views (orders, reports) by branch via the
- *    sidebar branch context switcher.
- *  • Staff can be assigned to operate from a specific branch
- *    (future: branch_id on users for branch-level login routing).
+ *  annanagar      → branch-anna-nagar.sqlite  → shop_name "Anna Nagar Branch"
+ *                                               10 products · 8 customers · 15 orders
  *
- *  REQUEST LIFECYCLE
- *  ─────────────────────────────────────────────────────────────────────────────
- *  1. HTTP request arrives.
- *  2. ResolveTenantContext middleware runs:
- *     • SuperAdmin: no tenant context → only platform models accessible.
- *     • Shop user:  activates main DB → if branch_code header present, activates branch DB.
- *     • Public storefront: activates by slug.
- *  3. TenantModel::getConnectionName() returns 'tenant' (the activated SQLite).
- *  4. All product/customer/order queries hit the shop's own SQLite file.
+ *  superadmin     → platform DB only (PostgreSQL/SQLite), no tenant data
  *
- *  LOGIN CREDENTIALS (seeded below)
+ *  ARCHITECTURE
  *  ─────────────────────────────────────────────────────────────────────────────
- *  SuperAdmin   : superadmin@pookal.com  /  super@pookal
- *  Shop Admin   : admin@pookal.com       /  pookal123  (sees all data, can switch branches)
- *  Shop Staff   : staff@pookal.com       /  pookal123  (inherits main shop, can switch)
- *  Branch Login : annanagar@pookal.com   /  pookal123  (LOCKED to Anna Nagar branch DB)
+ *  Platform DB  (connection: 'platform')
+ *    Tables: users, plans, subscriptions, branches, tenant_databases
+ *    Models: User, Plan, Subscription, Branch, TenantDatabase  (→ PlatformModel)
+ *
+ *  Tenant DB  (connection: 'tenant' — per-shop SQLite)
+ *    Tables: products, customers, orders, order_items, stock_ledger,
+ *            shop_settings, farmers, farmer_deliveries, farmer_payments,
+ *            bulk_buyers, bulk_sales, bulk_sale_items
+ *    Models: Product, Customer, Order, ShopSetting … (→ TenantModel)
+ *    Path:   database/tenants/shop-{owner_id}/main.sqlite
+ *            database/tenants/shop-{owner_id}/branch-{code}.sqlite
  * ════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -100,12 +72,11 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
-        // ════════════════════════════════════════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════════
         //  PHASE 1 — PLATFORM DATABASE
-        //  SuperAdmin, Plans, Shop accounts, Subscriptions, Branches
-        // ════════════════════════════════════════════════════════════════════════
+        //  All models here use $connection = 'platform' (User, Plan, etc.)
+        // ════════════════════════════════════════════════════════════════════
 
-        // ── SuperAdmin ───────────────────────────────────────────────────────
         User::firstOrCreate(
             ['email' => 'superadmin@pookal.com'],
             [
@@ -116,51 +87,23 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // ── Plans ────────────────────────────────────────────────────────────
         $allModules = ['pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
 
         $plans = [];
         foreach ([
-            [
-                'name'          => 'Free Trial',
-                'description'   => '14-day free trial — all modules, 1 user.',
-                'price_monthly' => 0,
-                'price_yearly'  => 0,
-                'modules'       => $allModules,
-                'max_users'     => 1,
-            ],
-            [
-                'name'          => 'Starter',
-                'description'   => 'POS + Inventory + Orders. Ideal for a single-counter shop.',
-                'price_monthly' => 999,
-                'price_yearly'  => 9_999,
-                'modules'       => ['pos', 'inventory', 'orders', 'settings'],
-                'max_users'     => 2,
-            ],
-            [
-                'name'          => 'Pro',
-                'description'   => 'All modules + CRM + Delivery + Reports + Storefront website.',
-                'price_monthly' => 1_999,
-                'price_yearly'  => 19_999,
-                'modules'       => $allModules,
-                'max_users'     => 5,
-            ],
-            [
-                'name'          => 'Enterprise',
-                'description'   => 'Multi-branch chain. Unlimited users, all modules, priority support.',
-                'price_monthly' => 4_999,
-                'price_yearly'  => 49_999,
-                'modules'       => $allModules,
-                'max_users'     => 999,
-            ],
+            ['name' => 'Free Trial',   'desc' => '14-day free trial — all modules, 1 user.',                              'pm' => 0,     'py' => 0,      'modules' => $allModules,                                    'max' => 1],
+            ['name' => 'Starter',      'desc' => 'POS + Inventory + Orders. Ideal for a single-counter shop.',            'pm' => 999,   'py' => 9_999,  'modules' => ['pos','inventory','orders','settings'],        'max' => 2],
+            ['name' => 'Pro',          'desc' => 'All modules + CRM + Delivery + Reports + Storefront website.',          'pm' => 1_999, 'py' => 19_999, 'modules' => $allModules,                                    'max' => 5],
+            ['name' => 'Enterprise',   'desc' => 'Multi-branch chain. Unlimited users, all modules, priority support.',   'pm' => 4_999, 'py' => 49_999, 'modules' => $allModules,                                    'max' => 999],
         ] as $p) {
             $plans[$p['name']] = Plan::firstOrCreate(
                 ['name' => $p['name']],
-                array_merge($p, ['is_active' => true])
+                ['description' => $p['desc'], 'price_monthly' => $p['pm'], 'price_yearly' => $p['py'],
+                 'modules' => $p['modules'], 'max_users' => $p['max'], 'is_active' => true]
             );
         }
 
-        // ── Demo Shop Owner ───────────────────────────────────────────────────
+        // ── Shop owner (T. Nagar main shop) ──────────────────────────────────
         $shopAdmin = User::firstOrCreate(
             ['email' => 'admin@pookal.com'],
             [
@@ -172,20 +115,20 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // ── Demo Staff Member ─────────────────────────────────────────────────
-        User::firstOrCreate(
+        // ── Main-shop staff (no branch_id → inherits main shop DB) ───────────
+        $shopStaff = User::firstOrCreate(
             ['email' => 'staff@pookal.com'],
             [
-                'name'           => 'Kavitha (Counter Staff)',
+                'name'           => 'Kavitha (Main Counter)',
                 'role'           => 'staff',
                 'shop_name'      => 'Pookal Flowers',
                 'phone'          => '9876543211',
                 'password'       => Hash::make('pookal123'),
                 'parent_user_id' => $shopAdmin->id,
+                // No branch_id → ResolveTenantContext activates the MAIN shop DB
             ]
         );
 
-        // ── Subscription (Pro plan, active for 1 year) ────────────────────────
         if (! $shopAdmin->subscriptions()->exists()) {
             Subscription::create([
                 'user_id'           => $shopAdmin->id,
@@ -201,18 +144,7 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        // ── Provision main tenant DB (creates SQLite + schema + basic settings) ─
-        //    After this call, TenantContext is activated and all TenantModel
-        //    queries go to this shop's SQLite file.
-        $mainDb = $this->provisioner->provisionMainDatabase($shopAdmin);
-
-        // Mark website live
-        $mainDb->update([
-            'storefront_slug' => 'pookal-flowers',
-            'website_enabled' => true,
-        ]);
-
-        // ── Demo Branch (created on platform, provisioned as branch DB) ───────
+        // ── Branch record on platform DB ─────────────────────────────────────
         $branch = Branch::firstOrCreate(
             ['user_id' => $shopAdmin->id, 'code' => 'anna-nagar'],
             [
@@ -223,37 +155,20 @@ class DatabaseSeeder extends Seeder
                 'is_active'    => true,
             ]
         );
-        if (! $branch->databaseConfig) {
-            $this->provisioner->provisionBranchDatabase($shopAdmin, $branch);
-        }
 
-        // ── Branch Login User — locked to Anna Nagar branch ───────────────────
-        User::firstOrCreate(
-            ['email' => 'annanagar@pookal.com'],
-            [
-                'name'           => 'Anna Nagar Counter',
-                'role'           => 'staff',
-                'shop_name'      => 'Pookal Flowers',
-                'phone'          => '9876543212',
-                'password'       => Hash::make('pookal123'),
-                'parent_user_id' => $shopAdmin->id,
-                'branch_id'      => $branch->id,
-            ]
-        );
+        // ════════════════════════════════════════════════════════════════════
+        //  PHASE 2 — MAIN SHOP TENANT DB
+        //  After provisionMainDatabase, all TenantModel writes go to:
+        //  database/tenants/shop-{shopAdmin->id}/main.sqlite
+        // ════════════════════════════════════════════════════════════════════
 
-        // Re-activate main DB (provisionBranch switches to branch DB)
-        $this->connectionManager->activate($mainDb);
+        $mainDb = $this->provisioner->provisionMainDatabase($shopAdmin);
+        $mainDb->update(['storefront_slug' => 'pookal-flowers', 'website_enabled' => true]);
 
         $uid = $shopAdmin->id;
 
-        // ════════════════════════════════════════════════════════════════════════
-        //  PHASE 2 — TENANT DATABASE  (inside shop's SQLite after activation)
-        //  All TenantModel writes now go to:
-        //  storage/app/tenants/shop-{uid}/main.sqlite
-        // ════════════════════════════════════════════════════════════════════════
-
-        // ── Shop Settings ─────────────────────────────────────────────────────
-        foreach ([
+        // ── Main shop settings ────────────────────────────────────────────────
+        $this->seedSettings($uid, [
             'shop_name'               => 'Pookal Flowers',
             'shop_tagline'            => 'Fresh Blooms, Delivered with Love',
             'shop_phone'              => '9876543210',
@@ -272,66 +187,34 @@ class DatabaseSeeder extends Seeder
             'website_intro'           => 'Order online from our curated collection of fresh flowers, bouquets, and gifts.',
             'website_primary_color'   => '#7d294a',
             'website_secondary_color' => '#25543a',
-        ] as $key => $value) {
-            ShopSetting::updateOrCreate(
-                ['user_id' => $uid, 'key' => $key],
-                ['value'   => $value]
-            );
-        }
+        ]);
 
-        // ── Products ──────────────────────────────────────────────────────────
-        $productRows = [
-            // ── Bouquets & Arrangements
+        // ── Main shop products ────────────────────────────────────────────────
+        $mainProducts = $this->seedProducts($uid, [
             ['name' => 'Red Rose Bouquet',       'sku' => 'ROSE-RED-001',   'category' => 'Bouquet',      'price' => 799,   'unit' => 'bunch',   'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 3, 'stock' => 45],
             ['name' => 'White Lily Bouquet',      'sku' => 'LILY-WHT-001',   'category' => 'Bouquet',      'price' => 1_299, 'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 22],
             ['name' => 'Mixed Flower Basket',     'sku' => 'MIX-BSKT-001',  'category' => 'Arrangement',  'price' => 1_499, 'unit' => 'piece',   'reorder_level' => 5,  'track_freshness' => true,  'freshness_days' => 3, 'stock' => 18],
             ['name' => 'Carnation Bouquet',       'sku' => 'CARN-BCH-001',   'category' => 'Bouquet',      'price' => 699,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 19],
             ['name' => 'Tulip Bouquet',           'sku' => 'TULIP-BCH-001',  'category' => 'Bouquet',      'price' => 999,   'unit' => 'bunch',   'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 12],
-            // ── Garlands & Strings
             ['name' => 'Jasmine String (1 m)',    'sku' => 'JASMINE-STR',    'category' => 'Garland',      'price' => 149,   'unit' => 'metre',   'reorder_level' => 50, 'track_freshness' => true,  'freshness_days' => 1, 'stock' => 180],
             ['name' => 'Marigold Garland',        'sku' => 'MARIGOLD-GRL',   'category' => 'Garland',      'price' => 249,   'unit' => 'piece',   'reorder_level' => 15, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 60],
-            // ── Single Stems & Bunches
             ['name' => 'Orchid Stem',             'sku' => 'ORCHID-STM-001', 'category' => 'Stem',         'price' => 399,   'unit' => 'stem',    'reorder_level' => 12, 'track_freshness' => true,  'freshness_days' => 7, 'stock' => 35],
             ['name' => 'Sunflower Bunch',         'sku' => 'SUNFLWR-BCH',    'category' => 'Bunch',        'price' => 599,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 7],
             ['name' => 'Lotus Flower',            'sku' => 'LOTUS-001',      'category' => 'Stem',         'price' => 299,   'unit' => 'stem',    'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 4],
             ['name' => 'Chrysanthemum Bunch',     'sku' => 'CHRYS-BCH',      'category' => 'Bunch',        'price' => 449,   'unit' => 'bunch',   'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 4, 'stock' => 28],
             ['name' => 'Gerbera Bunch',           'sku' => 'GERB-BCH-001',   'category' => 'Bunch',        'price' => 499,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 31],
-            ['name' => "Baby's Breath",           'sku' => 'BABYBTH-001',    'category' => 'Bunch',        'price' => 349,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 3],
+            ["name" => "Baby's Breath",           'sku' => 'BABYBTH-001',    'category' => 'Bunch',        'price' => 349,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 3],
             ['name' => 'Lavender Bundle',         'sku' => 'LAVNDR-001',     'category' => 'Bunch',        'price' => 549,   'unit' => 'bundle',  'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 6, 'stock' => 14],
-            // ── Loose Flowers
             ['name' => 'Rose Petals (100 g)',     'sku' => 'ROSE-PETALS',    'category' => 'Loose Flower', 'price' => 199,   'unit' => '100g',    'reorder_level' => 20, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 85],
-            // ── Supplies & Packaging
             ['name' => 'Gold Wrapping Paper',     'sku' => 'WRAP-GOLD-01',   'category' => 'Supply',       'price' => 49,    'unit' => 'sheet',   'reorder_level' => 30, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 120],
             ['name' => 'Red Ribbon Bundle',       'sku' => 'RIBBON-RED',     'category' => 'Supply',       'price' => 89,    'unit' => 'roll',    'reorder_level' => 15, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 42],
             ['name' => 'Flower Box (Medium)',     'sku' => 'BOX-MED-001',    'category' => 'Supply',       'price' => 129,   'unit' => 'piece',   'reorder_level' => 20, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 55],
-            // ── Accessories
             ['name' => 'Glass Vase (Medium)',     'sku' => 'VASE-GLASS-M',   'category' => 'Accessory',    'price' => 599,   'unit' => 'piece',   'reorder_level' => 5,  'track_freshness' => false, 'freshness_days' => 0, 'stock' => 18],
             ['name' => 'Flower Food Sachet',      'sku' => 'FOOD-SACHET',    'category' => 'Supply',       'price' => 29,    'unit' => 'sachet',  'reorder_level' => 40, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 200],
-        ];
+        ]);
 
-        $products = [];
-        foreach ($productRows as $row) {
-            $stock = $row['stock'];
-            unset($row['stock']);
-            $product = Product::updateOrCreate(
-                ['sku' => $row['sku']],
-                array_merge($row, ['user_id' => $uid])
-            );
-            // Opening stock entry (idempotent by reference)
-            StockLedger::firstOrCreate(
-                ['product_id' => $product->id, 'reference' => 'INITIAL-STOCK'],
-                [
-                    'txn_type'     => 'receive',
-                    'qty_change'   => $stock,
-                    'balance_after'=> $stock,
-                    'notes'        => 'Opening stock (seeded)',
-                ]
-            );
-            $products[] = $product;
-        }
-
-        // ── Customers (end-customers of the shop, NOT Pookal clients) ─────────
-        $customerRows = [
+        // ── Main shop customers ───────────────────────────────────────────────
+        $mainCustomers = $this->seedCustomers($uid, [
             ['name' => 'Anitha Kumar',     'phone' => '9876543210', 'email' => 'anitha@example.com',     'segment' => 'vip',     'loyalty_points' => 240, 'preferred_channel' => 'whatsapp'],
             ['name' => 'Saravanan Muthu',  'phone' => '9765432109', 'email' => 'saravanan@example.com',  'segment' => 'regular', 'loyalty_points' => 125, 'preferred_channel' => 'sms'],
             ['name' => 'Meena Rajan',      'phone' => '9654321098', 'email' => 'meena@example.com',      'segment' => 'vip',     'loyalty_points' => 580, 'preferred_channel' => 'whatsapp'],
@@ -347,205 +230,296 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Geetha Krishnan',  'phone' => '8654321098', 'email' => 'geetha@example.com',     'segment' => 'event',   'loyalty_points' => 275, 'preferred_channel' => 'email'],
             ['name' => 'Murugan Pillai',   'phone' => '8543210987', 'email' => 'murugan@example.com',    'segment' => 'regular', 'loyalty_points' => 10,  'preferred_channel' => 'sms'],
             ['name' => 'Nithya Balaji',    'phone' => '8432109876', 'email' => 'nithya@example.com',     'segment' => 'vip',     'loyalty_points' => 430, 'preferred_channel' => 'whatsapp'],
-        ];
+        ]);
 
-        foreach ($customerRows as $row) {
+        // ── Main shop orders ──────────────────────────────────────────────────
+        if (Order::where('user_id', $uid)->count() === 0) {
+            $this->seedOrders($uid, $mainProducts, $mainCustomers, 30);
+        }
+
+        // ── Main shop vendors ─────────────────────────────────────────────────
+        if (Farmer::where('user_id', $uid)->count() === 0) {
+            $this->seedFarmers($uid, $mainProducts);
+        }
+
+        if (BulkBuyer::where('user_id', $uid)->count() === 0) {
+            $this->seedBulkBuyers($uid, $mainProducts);
+        }
+
+        // ════════════════════════════════════════════════════════════════════
+        //  PHASE 3 — BRANCH TENANT DB  (Anna Nagar)
+        //  provisionBranchDatabase activates the branch SQLite connection.
+        //  All TenantModel writes after this go to:
+        //  database/tenants/shop-{shopAdmin->id}/branch-anna-nagar.sqlite
+        // ════════════════════════════════════════════════════════════════════
+
+        // Always provision — updateOrCreate is idempotent; ensureSchema() is safe to re-run.
+        $this->provisioner->provisionBranchDatabase($shopAdmin, $branch);
+
+        // ── Anna Nagar branch settings ────────────────────────────────────────
+        $this->seedSettings($uid, [
+            'shop_name'     => 'Anna Nagar Branch',
+            'shop_tagline'  => 'Flowers for Every Occasion',
+            'shop_phone'    => '9876543299',
+            'shop_email'    => 'annanagar@pookalflowers.in',
+            'shop_address'  => '45, Nelson Manickam Rd, Anna Nagar, Chennai 600 040',
+            'gstin'         => '33AABCU9603R1ZX',
+            'tax_rate'      => '5',
+            'currency'      => 'INR',
+            'currency_symbol' => 'Rs.',
+            'receipt_footer'  => 'Thank you — Anna Nagar Branch',
+        ]);
+
+        // ── Anna Nagar products ───────────────────────────────────────────────
+        $branchProducts = $this->seedProducts($uid, [
+            ['name' => 'Red Rose Bouquet',     'sku' => 'ROSE-RED-001',  'category' => 'Bouquet',  'price' => 799,   'unit' => 'bunch', 'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 3, 'stock' => 30],
+            ['name' => 'White Lily Bouquet',   'sku' => 'LILY-WHT-001',  'category' => 'Bouquet',  'price' => 1_299, 'unit' => 'bunch', 'reorder_level' => 5,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 10],
+            ['name' => 'Jasmine String (1 m)', 'sku' => 'JASMINE-STR',   'category' => 'Garland',  'price' => 149,   'unit' => 'metre', 'reorder_level' => 40, 'track_freshness' => true,  'freshness_days' => 1, 'stock' => 120],
+            ['name' => 'Marigold Garland',     'sku' => 'MARIGOLD-GRL',  'category' => 'Garland',  'price' => 249,   'unit' => 'piece', 'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 45],
+            ['name' => 'Sunflower Bunch',      'sku' => 'SUNFLWR-BCH',   'category' => 'Bunch',    'price' => 599,   'unit' => 'bunch', 'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 14],
+            ['name' => 'Carnation Bouquet',    'sku' => 'CARN-BCH-001',  'category' => 'Bouquet',  'price' => 699,   'unit' => 'bunch', 'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 20],
+            ['name' => 'Orchid Stem',          'sku' => 'ORCHID-STM-001','category' => 'Stem',     'price' => 399,   'unit' => 'stem',  'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 7, 'stock' => 15],
+            ['name' => 'Rose Petals (100 g)',  'sku' => 'ROSE-PETALS',   'category' => 'Loose Flower','price' => 199, 'unit' => '100g', 'reorder_level' => 15, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 50],
+            ['name' => 'Gold Wrapping Paper',  'sku' => 'WRAP-GOLD-01',  'category' => 'Supply',   'price' => 49,    'unit' => 'sheet', 'reorder_level' => 20, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 80],
+            ['name' => 'Flower Box (Medium)',  'sku' => 'BOX-MED-001',   'category' => 'Supply',   'price' => 129,   'unit' => 'piece', 'reorder_level' => 15, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 35],
+        ]);
+
+        // ── Anna Nagar customers ──────────────────────────────────────────────
+        $branchCustomers = $this->seedCustomers($uid, [
+            ['name' => 'Senthil Kumar',    'phone' => '9811223344', 'email' => 'senthil@example.com',    'segment' => 'vip',     'loyalty_points' => 310, 'preferred_channel' => 'whatsapp'],
+            ['name' => 'Revathi Mohan',    'phone' => '9822334455', 'email' => 'revathi@example.com',    'segment' => 'regular', 'loyalty_points' => 80,  'preferred_channel' => 'sms'],
+            ['name' => 'Balamurugan T.',   'phone' => '9833445566', 'email' => 'balu@example.com',       'segment' => 'event',   'loyalty_points' => 520, 'preferred_channel' => 'whatsapp'],
+            ['name' => 'Sangeetha Raj',    'phone' => '9844556677', 'email' => 'sangeetha@example.com',  'segment' => 'vip',     'loyalty_points' => 190, 'preferred_channel' => 'email'],
+            ['name' => 'Venkatesh P.',     'phone' => '9855667788', 'email' => 'venkatesh@example.com',  'segment' => 'regular', 'loyalty_points' => 55,  'preferred_channel' => 'sms'],
+            ['name' => 'Usha Devi',        'phone' => '9866778899', 'email' => 'usha@example.com',       'segment' => 'vip',     'loyalty_points' => 640, 'preferred_channel' => 'whatsapp'],
+            ['name' => 'Arjun Natarajan',  'phone' => '9877889900', 'email' => 'arjun@example.com',      'segment' => 'regular', 'loyalty_points' => 35,  'preferred_channel' => 'sms'],
+            ['name' => 'Malathi Krishnan', 'phone' => '9888990011', 'email' => 'malathi@example.com',    'segment' => 'event',   'loyalty_points' => 275, 'preferred_channel' => 'whatsapp'],
+        ]);
+
+        // ── Anna Nagar orders ─────────────────────────────────────────────────
+        if (Order::where('user_id', $uid)->count() === 0) {
+            $this->seedOrders($uid, $branchProducts, $branchCustomers, 15);
+        }
+
+        // ── Switch back to main DB so any subsequent code is safe ─────────────
+        $this->connectionManager->activate($mainDb);
+
+        // ════════════════════════════════════════════════════════════════════
+        //  PHASE 4 — BRANCH STAFF USER (platform DB — User always uses 'platform')
+        // ════════════════════════════════════════════════════════════════════
+
+        User::firstOrCreate(
+            ['email' => 'annanagar@pookal.com'],
+            [
+                'name'           => 'Arjun (Anna Nagar Counter)',
+                'role'           => 'staff',
+                'shop_name'      => 'Pookal Flowers',
+                'phone'          => '9876543212',
+                'password'       => Hash::make('pookal123'),
+                'parent_user_id' => $shopAdmin->id,
+                'branch_id'      => $branch->id,
+                // branch_id set → ResolveTenantContext activates the BRANCH DB automatically
+            ]
+        );
+
+        $this->command->info('');
+        $this->command->info('  ┌──────────────────────────────────────────────────────────────┐');
+        $this->command->info('  │  POOKAL DEMO SEED COMPLETE                                   │');
+        $this->command->info('  ├──────────────────────────────────────────────────────────────┤');
+        $this->command->info('  │  superadmin@pookal.com  /  super@pookal                      │');
+        $this->command->info('  │    → Platform admin only, no shop data                       │');
+        $this->command->info('  │                                                              │');
+        $this->command->info('  │  admin@pookal.com       /  pookal123                         │');
+        $this->command->info('  │    → Main shop (T. Nagar): 20 products, 15 customers,        │');
+        $this->command->info('  │      30 orders, 3 farmers, 3 bulk buyers                     │');
+        $this->command->info('  │    → Can switch to Anna Nagar branch via sidebar              │');
+        $this->command->info('  │                                                              │');
+        $this->command->info('  │  staff@pookal.com       /  pookal123                         │');
+        $this->command->info('  │    → Same main shop data as admin (read/write ops only)      │');
+        $this->command->info('  │    → Cannot manage users, branches, or subscriptions         │');
+        $this->command->info('  │                                                              │');
+        $this->command->info('  │  annanagar@pookal.com   /  pookal123                         │');
+        $this->command->info('  │    → Anna Nagar branch ONLY: 10 products, 8 customers,       │');
+        $this->command->info('  │      15 orders. Cannot see main shop data.                   │');
+        $this->command->info('  └──────────────────────────────────────────────────────────────┘');
+        $this->command->info('');
+    }
+
+    // ── Private helpers ────────────────────────────────────────────────────────
+
+    private function seedSettings(int $uid, array $settings): void
+    {
+        foreach ($settings as $key => $value) {
+            ShopSetting::updateOrCreate(
+                ['user_id' => $uid, 'key' => $key],
+                ['value'   => $value]
+            );
+        }
+    }
+
+    /** @return Product[] */
+    private function seedProducts(int $uid, array $rows): array
+    {
+        $products = [];
+        foreach ($rows as $row) {
+            $stock = $row['stock'];
+            unset($row['stock']);
+            $product = Product::updateOrCreate(
+                ['sku' => $row['sku']],
+                array_merge($row, ['user_id' => $uid])
+            );
+            StockLedger::firstOrCreate(
+                ['product_id' => $product->id, 'reference' => 'INITIAL-STOCK'],
+                [
+                    'txn_type'      => 'receive',
+                    'qty_change'    => $stock,
+                    'balance_after' => $stock,
+                    'notes'         => 'Opening stock (seeded)',
+                ]
+            );
+            $products[] = $product;
+        }
+        return $products;
+    }
+
+    /** @return int[] customer IDs */
+    private function seedCustomers(int $uid, array $rows): array
+    {
+        foreach ($rows as $row) {
             Customer::updateOrCreate(
                 ['user_id' => $uid, 'email' => $row['email']],
                 array_merge($row, ['user_id' => $uid])
             );
         }
+        return Customer::where('user_id', $uid)->pluck('id')->toArray();
+    }
 
-        $customerIds = Customer::where('user_id', $uid)->pluck('id')->toArray();
+    private function seedOrders(int $uid, array $products, array $customerIds, int $count): void
+    {
+        $statusPool = array_merge(
+            array_fill(0, (int) ($count * 0.2), 'pending'),
+            array_fill(0, (int) ($count * 0.2), 'packed'),
+            array_fill(0, (int) ($count * 0.27), 'dispatched'),
+            array_fill(0, $count,                'delivered'),    // pad to at least $count
+        );
+        shuffle($statusPool);
 
-        // ── Orders (30 demo orders across channels) ────────────────────────────
-        if (Order::where('user_id', $uid)->count() === 0) {
-            $statusPool = array_merge(
-                array_fill(0, 6,  'pending'),
-                array_fill(0, 6,  'packed'),
-                array_fill(0, 8,  'dispatched'),
-                array_fill(0, 10, 'delivered')
-            );
-            shuffle($statusPool);
+        $channels = ['store', 'online', 'whatsapp'];
+        $slots    = ['09:00-11:00', '11:00-13:00', '13:00-15:00', '15:00-17:00', '17:00-19:00'];
+        $orderNum = Order::where('user_id', $uid)->max('order_number')
+            ? (int) str_replace('ORD-', '', Order::where('user_id', $uid)->max('order_number')) + 1
+            : 1001;
 
-            $channels = ['store', 'online', 'whatsapp'];
-            $slots    = ['09:00-11:00', '11:00-13:00', '13:00-15:00', '15:00-17:00', '17:00-19:00'];
-            $orderNum = 1001;
+        for ($i = 0; $i < $count; $i++) {
+            $numItems = rand(1, 3);
+            $indices  = array_keys($products);
+            shuffle($indices);
+            $selected = array_slice($indices, 0, $numItems);
 
-            for ($i = 0; $i < 30; $i++) {
-                $numItems = rand(1, 3);
-                $indices  = array_keys($products);
-                shuffle($indices);
-                $selected = array_slice($indices, 0, $numItems);
-
-                $subtotal  = 0;
-                $lineItems = [];
-                foreach ($selected as $idx) {
-                    $p    = $products[$idx];
-                    $qty  = rand(1, 3);
-                    $line = round($qty * $p->price, 2);
-                    $subtotal   += $line;
-                    $lineItems[] = ['product' => $p, 'qty' => $qty, 'unit_price' => $p->price, 'line_total' => $line];
-                }
-
-                $taxTotal   = round($subtotal * 0.05, 2);
-                $grandTotal = round($subtotal + $taxTotal, 2);
-                $daysAgo    = rand(0, 60);
-
-                $order = Order::create([
-                    'user_id'        => $uid,
-                    'order_number'   => 'ORD-' . $orderNum++,
-                    'customer_id'    => $customerIds[array_rand($customerIds)],
-                    'channel'        => $channels[array_rand($channels)],
-                    'status'         => $statusPool[$i],
-                    'subtotal'       => $subtotal,
-                    'discount_total' => 0,
-                    'tax_total'      => $taxTotal,
-                    'grand_total'    => $grandTotal,
-                    'delivery_date'  => Carbon::today()->subDays($daysAgo)->toDateString(),
-                    'delivery_time_slot' => $slots[array_rand($slots)],
-                    'created_at'     => Carbon::now()->subDays($daysAgo),
-                    'updated_at'     => Carbon::now()->subDays($daysAgo),
-                ]);
-
-                foreach ($lineItems as $li) {
-                    OrderItem::create([
-                        'order_id'   => $order->id,
-                        'product_id' => $li['product']->id,
-                        'qty'        => $li['qty'],
-                        'unit_price' => $li['unit_price'],
-                        'line_total' => $li['line_total'],
-                    ]);
-                }
+            $subtotal  = 0;
+            $lineItems = [];
+            foreach ($selected as $idx) {
+                $p    = $products[$idx];
+                $qty  = rand(1, 3);
+                $line = round($qty * $p->price, 2);
+                $subtotal   += $line;
+                $lineItems[] = ['product' => $p, 'qty' => $qty, 'unit_price' => $p->price, 'line_total' => $line];
             }
-        }
 
-        // ── Farmers (vendor / flower suppliers) ───────────────────────────────
-        if (Farmer::where('user_id', $uid)->count() === 0) {
-            $farmerRows = [
-                [
-                    'name'          => 'Murugan Farms',
-                    'phone'         => '9988776655',
-                    'email'         => 'murugan@farms.com',
-                    'address'       => 'Hosur Road, Krishnagiri District',
-                    'payment_cycle' => 'biweekly',
-                    'bank_name'     => 'Canara Bank',
-                    'account_number'=> '111122223333',
-                    'ifsc_code'     => 'CNRB0001234',
-                    'is_active'     => true,
-                ],
-                [
-                    'name'          => 'Selvam Rose Garden',
-                    'phone'         => '9977665544',
-                    'email'         => 'selvam@rosegarden.in',
-                    'address'       => 'Ooty Road, Coimbatore',
-                    'payment_cycle' => 'weekly',
-                    'bank_name'     => 'SBI',
-                    'account_number'=> '444455556666',
-                    'ifsc_code'     => 'SBIN0004321',
-                    'is_active'     => true,
-                ],
-                [
-                    'name'          => 'Kamala Lily Nursery',
-                    'phone'         => '9966554433',
-                    'email'         => null,
-                    'address'       => 'Palani Road, Dindigul',
-                    'payment_cycle' => 'monthly',
-                    'bank_name'     => null,
-                    'account_number'=> null,
-                    'ifsc_code'     => null,
-                    'is_active'     => true,
-                ],
-            ];
+            $taxTotal   = round($subtotal * 0.05, 2);
+            $grandTotal = round($subtotal + $taxTotal, 2);
+            $daysAgo    = rand(0, 60);
 
-            foreach ($farmerRows as $fr) {
-                $farmer = Farmer::create(array_merge($fr, ['user_id' => $uid]));
+            $order = Order::create([
+                'user_id'            => $uid,
+                'order_number'       => 'ORD-' . $orderNum++,
+                'customer_id'        => $customerIds[array_rand($customerIds)],
+                'channel'            => $channels[array_rand($channels)],
+                'status'             => $statusPool[$i] ?? 'delivered',
+                'subtotal'           => $subtotal,
+                'discount_total'     => 0,
+                'tax_total'          => $taxTotal,
+                'grand_total'        => $grandTotal,
+                'delivery_date'      => Carbon::today()->subDays($daysAgo)->toDateString(),
+                'delivery_time_slot' => $slots[array_rand($slots)],
+                'created_at'         => Carbon::now()->subDays($daysAgo),
+                'updated_at'         => Carbon::now()->subDays($daysAgo),
+            ]);
 
-                // 3 deliveries per farmer
-                foreach (range(1, 3) as $d) {
-                    $qty   = rand(10, 60);
-                    $rate  = rand(20, 80);
-                    $total = round($qty * $rate, 2);
-                    FarmerDelivery::create([
-                        'user_id'       => $uid,
-                        'farmer_id'     => $farmer->id,
-                        'flower_type'   => $d === 1 ? 'Rose' : ($d === 2 ? 'Lily' : 'Marigold'),
-                        'quantity'      => $qty,
-                        'unit'          => 'kg',
-                        'rate_per_unit' => $rate,
-                        'total_amount'  => $total,
-                        'delivery_date' => Carbon::today()->subDays(rand(1, 30))->toDateString(),
-                        'quality_grade' => ['A', 'B', 'A'][array_rand(['A', 'B', 'A'])],
-                    ]);
-                }
-
-                // 1 payment per farmer
-                FarmerPayment::create([
-                    'user_id'      => $uid,
-                    'farmer_id'    => $farmer->id,
-                    'amount'       => rand(2000, 8000),
-                    'period_start' => Carbon::today()->subDays(14)->toDateString(),
-                    'period_end'   => Carbon::today()->toDateString(),
-                    'status'       => 'paid',
-                    'payment_date' => Carbon::today()->toDateString(),
-                    'payment_mode' => 'bank',
+            foreach ($lineItems as $li) {
+                OrderItem::create([
+                    'order_id'   => $order->id,
+                    'product_id' => $li['product']->id,
+                    'qty'        => $li['qty'],
+                    'unit_price' => $li['unit_price'],
+                    'line_total' => $li['line_total'],
                 ]);
             }
         }
+    }
 
-        // ── Bulk Buyers + Sales ────────────────────────────────────────────────
-        if (BulkBuyer::where('user_id', $uid)->count() === 0) {
-            $buyerRows = [
-                ['name' => 'Chennai Events Co.',      'contact_person' => 'Ravi Kumar',  'phone' => '9876012345', 'type' => 'company', 'is_active' => true],
-                ['name' => 'Koyambedu Flower Market', 'contact_person' => 'Market Agent','phone' => '9865012345', 'type' => 'market',  'is_active' => true],
-                ['name' => 'Taj Hotel Catering',      'contact_person' => 'Sunita',      'phone' => '9854012345', 'type' => 'hotel',   'is_active' => true],
-            ];
+    private function seedFarmers(int $uid, array $products): void
+    {
+        foreach ([
+            ['name' => 'Murugan Farms',       'phone' => '9988776655', 'email' => 'murugan@farms.com',       'address' => 'Hosur Road, Krishnagiri District', 'payment_cycle' => 'biweekly', 'bank_name' => 'Canara Bank', 'account_number' => '111122223333', 'ifsc_code' => 'CNRB0001234'],
+            ['name' => 'Selvam Rose Garden',  'phone' => '9977665544', 'email' => 'selvam@rosegarden.in',    'address' => 'Ooty Road, Coimbatore',            'payment_cycle' => 'weekly',   'bank_name' => 'SBI',         'account_number' => '444455556666', 'ifsc_code' => 'SBIN0004321'],
+            ['name' => 'Kamala Lily Nursery', 'phone' => '9966554433', 'email' => null,                      'address' => 'Palani Road, Dindigul',            'payment_cycle' => 'monthly',  'bank_name' => null,          'account_number' => null,           'ifsc_code' => null],
+        ] as $fr) {
+            $farmer = Farmer::create(array_merge($fr, ['user_id' => $uid, 'is_active' => true]));
 
-            $invoiceNum = 2001;
-            foreach ($buyerRows as $br) {
-                $buyer = BulkBuyer::create(array_merge($br, ['user_id' => $uid]));
+            foreach (range(1, 3) as $d) {
+                $qty = rand(10, 60); $rate = rand(20, 80);
+                FarmerDelivery::create([
+                    'user_id' => $uid, 'farmer_id' => $farmer->id,
+                    'flower_type' => ['Rose', 'Lily', 'Marigold'][$d - 1],
+                    'quantity' => $qty, 'unit' => 'kg', 'rate_per_unit' => $rate,
+                    'total_amount' => round($qty * $rate, 2),
+                    'delivery_date' => Carbon::today()->subDays(rand(1, 30))->toDateString(),
+                    'quality_grade' => ['A', 'B', 'A'][array_rand(['A', 'B', 'A'])],
+                ]);
+            }
 
-                // 2 sales per buyer
-                foreach (range(1, 2) as $s) {
-                    $subtotal = rand(3000, 15000);
-                    $discount = round($subtotal * 0.05, 2);
-                    $grand    = round($subtotal - $discount, 2);
+            FarmerPayment::create([
+                'user_id' => $uid, 'farmer_id' => $farmer->id,
+                'amount' => rand(2000, 8000),
+                'period_start' => Carbon::today()->subDays(14)->toDateString(),
+                'period_end'   => Carbon::today()->toDateString(),
+                'status' => 'paid', 'payment_date' => Carbon::today()->toDateString(), 'payment_mode' => 'bank',
+            ]);
+        }
+    }
 
-                    $sale = BulkSale::create([
-                        'user_id'        => $uid,
-                        'bulk_buyer_id'  => $buyer->id,
-                        'invoice_number' => 'INV-' . $invoiceNum++,
-                        'sale_date'      => Carbon::today()->subDays(rand(1, 30))->toDateString(),
-                        'subtotal'       => $subtotal,
-                        'discount'       => $discount,
-                        'grand_total'    => $grand,
-                        'status'         => $s === 1 ? 'paid' : 'confirmed',
-                        'due_date'       => Carbon::today()->addDays(7)->toDateString(),
+    private function seedBulkBuyers(int $uid, array $products): void
+    {
+        $invoiceNum = 2001;
+        foreach ([
+            ['name' => 'Chennai Events Co.',      'contact_person' => 'Ravi Kumar',   'phone' => '9876012345', 'type' => 'company'],
+            ['name' => 'Koyambedu Flower Market', 'contact_person' => 'Market Agent', 'phone' => '9865012345', 'type' => 'market'],
+            ['name' => 'Taj Hotel Catering',      'contact_person' => 'Sunita',        'phone' => '9854012345', 'type' => 'hotel'],
+        ] as $br) {
+            $buyer = BulkBuyer::create(array_merge($br, ['user_id' => $uid, 'is_active' => true]));
+
+            foreach (range(1, 2) as $s) {
+                $subtotal = rand(3000, 15000);
+                $discount = round($subtotal * 0.05, 2);
+                $sale = BulkSale::create([
+                    'user_id' => $uid, 'bulk_buyer_id' => $buyer->id,
+                    'invoice_number' => 'INV-' . $invoiceNum++,
+                    'sale_date'  => Carbon::today()->subDays(rand(1, 30))->toDateString(),
+                    'subtotal'   => $subtotal, 'discount' => $discount,
+                    'grand_total'=> round($subtotal - $discount, 2),
+                    'status'     => $s === 1 ? 'paid' : 'confirmed',
+                    'due_date'   => Carbon::today()->addDays(7)->toDateString(),
+                ]);
+                foreach (['Rose', 'Marigold', 'Lily'] as $flower) {
+                    $qty = rand(5, 30); $rate = rand(15, 60);
+                    BulkSaleItem::create([
+                        'bulk_sale_id' => $sale->id, 'flower_type' => $flower,
+                        'quantity' => $qty, 'unit' => 'kg', 'rate_per_unit' => $rate,
+                        'total_amount' => round($qty * $rate, 2),
                     ]);
-
-                    foreach (['Rose', 'Marigold', 'Lily'] as $flower) {
-                        $qty  = rand(5, 30);
-                        $rate = rand(15, 60);
-                        BulkSaleItem::create([
-                            'bulk_sale_id' => $sale->id,
-                            'flower_type'  => $flower,
-                            'quantity'     => $qty,
-                            'unit'         => 'kg',
-                            'rate_per_unit'=> $rate,
-                            'total_amount' => round($qty * $rate, 2),
-                        ]);
-                    }
                 }
             }
         }
-
-        $this->command->info('✓ Platform: superadmin, plans, shop admin, staff, subscription, branch seeded.');
-        $this->command->info('✓ Tenant DB: settings, 20 products, 15 customers, 30 orders, 3 farmers, 3 bulk buyers seeded.');
-        $this->command->info('');
-        $this->command->info('  Login credentials:');
-        $this->command->info('  SuperAdmin     superadmin@pookal.com   /  super@pookal');
-        $this->command->info('  Shop Admin     admin@pookal.com        /  pookal123');
-        $this->command->info('  Shop Staff     staff@pookal.com        /  pookal123');
-        $this->command->info('  Branch Login   annanagar@pookal.com    /  pookal123  (Anna Nagar branch — locked)');
     }
 }

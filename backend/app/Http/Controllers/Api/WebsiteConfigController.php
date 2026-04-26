@@ -31,7 +31,7 @@ class WebsiteConfigController
             'website_contact_email' => $user->email,
         ];
 
-        $config = array_merge($defaults, ShopSetting::allAsMap($user->id));
+        $config = array_merge($defaults, ShopSetting::allAsMap($user->shopOwnerId()));
         $config['website_enabled'] = (bool) ($mainDatabase?->website_enabled ?? filter_var($config['website_enabled'], FILTER_VALIDATE_BOOLEAN));
         $config['website_share_url'] = rtrim(env('FRONTEND_URL', 'http://127.0.0.1:5173'), '/') . '/store/' . ($config['website_slug'] ?: $defaultSlug);
 
@@ -74,8 +74,9 @@ class WebsiteConfigController
             }
         }
 
+        $uid = $request->user()->shopOwnerId();
         foreach ($data as $key => $value) {
-            ShopSetting::set($key, is_bool($value) ? ($value ? '1' : '0') : $value, $request->user()->id);
+            ShopSetting::set($key, is_bool($value) ? ($value ? '1' : '0') : $value, $uid);
         }
 
         $request->user()->mainDatabase?->update([

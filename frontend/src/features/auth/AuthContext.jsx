@@ -4,6 +4,8 @@ import api from '../../services/api';
 const AuthContext = createContext(null);
 const TOKEN_KEY = 'pookal_auth_token';
 const USER_KEY = 'pookal_auth_user';
+const BRANCH_KEY = 'pookal_branch';
+const BRANCH_CODE_KEY = 'pookal_branch_code';
 
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY));
@@ -40,7 +42,13 @@ export function AuthProvider({ children }) {
       });
   }, [token]);
 
+  const clearBranch = () => {
+    localStorage.removeItem(BRANCH_KEY);
+    localStorage.removeItem(BRANCH_CODE_KEY);
+  };
+
   const persistAuth = ({ token: nextToken, user: nextUser }) => {
+    clearBranch(); // reset branch context when a new session starts
     setToken(nextToken);
     setUser(nextUser);
     localStorage.setItem(TOKEN_KEY, nextToken);
@@ -52,6 +60,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    clearBranch();
   };
 
   const register = async (payload) => {
