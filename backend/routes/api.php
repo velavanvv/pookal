@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AdminController;
+use App\Http\Controllers\Api\DemoController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StorefrontController;
 use App\Http\Controllers\Api\WebsiteConfigController;
@@ -19,6 +20,9 @@ use App\Http\Middleware\ResolveTenantContext;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'Pookal']));
+
+// Public — sales demo request (no login required)
+Route::post('/demo/request', [DemoController::class, 'store']);
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -130,6 +134,10 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
         Route::patch('/staff/{staffUser}',            [ShopStaffController::class, 'update']);
         Route::delete('/staff/{staffUser}',           [ShopStaffController::class, 'destroy']);
     });
+
+    // ── Demo requests (superadmin reads/updates) ───────────────────────────
+    Route::get('/demo/requests',                        [DemoController::class, 'index']);
+    Route::patch('/demo/requests/{demoRequest}',        [DemoController::class, 'update']);
 
     // ── Super-admin routes ──────────────────────────────────────────────────
     Route::prefix('admin')->group(function () {

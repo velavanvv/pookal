@@ -136,6 +136,114 @@ body {
 }
 .sb-user__out:hover { background: #3f3f46; color: #e4e4e7; }
 
+/* Notification badge on nav link */
+.sb-badge {
+  margin-left: auto; background: var(--pookal-rose); color: #fff;
+  font-size: 0.62rem; font-weight: 700; border-radius: 999px;
+  padding: 0.1em 0.45em; min-width: 1.35em; text-align: center; line-height: 1.5;
+}
+
+/* Close button inside sidebar — hidden on desktop */
+.sb-close {
+  display: none; margin-left: auto; background: none; border: none;
+  color: #71717a; cursor: pointer; font-size: 1.15rem;
+  padding: 0.25rem; border-radius: var(--radius-xs);
+}
+.sb-close:hover { color: #e4e4e7; }
+
+/* Mobile overlay backdrop */
+.sb-overlay {
+  display: none;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 199;
+}
+
+/* Mobile top bar — hidden on desktop */
+.app-topbar {
+  display: none;
+  align-items: center; gap: 0.65rem;
+  background: var(--bg-sidebar); color: #fff;
+  padding: 0.65rem 1rem; position: sticky; top: 0; z-index: 100;
+  border-bottom: 1px solid #27272a; flex-shrink: 0;
+}
+.app-topbar__burger {
+  background: none; border: none; color: #a1a1aa; cursor: pointer;
+  font-size: 1.4rem; display: grid; place-items: center; padding: 0;
+  flex-shrink: 0;
+}
+.app-topbar__burger:hover { color: #fff; }
+.app-topbar__brand {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-weight: 700; font-size: 1rem; color: #fff;
+}
+.app-topbar__brand i { color: var(--pookal-rose); font-size: 1.1rem; }
+.app-topbar__branch {
+  margin-left: auto; font-size: 0.72rem; color: #fda4af;
+  display: flex; align-items: center; gap: 0.3rem;
+  background: rgba(125,41,74,0.3); border-radius: var(--radius-xs);
+  padding: 0.2rem 0.5rem;
+}
+
+/* ── Mobile breakpoint ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Show top bar, hide nothing in desktop sidebar area */
+  .app-topbar    { display: flex; }
+  .sb-overlay    { display: block; }
+  .sb-close      { display: grid; place-items: center; }
+
+  /* Sidebar becomes a fixed drawer sliding in from left */
+  .sidebar {
+    position: fixed; left: 0; top: 0; height: 100vh; z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.24s cubic-bezier(0.4,0,0.2,1);
+    width: min(280px, 85vw);
+    box-shadow: none;
+  }
+  .sidebar--open {
+    transform: translateX(0);
+    box-shadow: 6px 0 32px rgba(0,0,0,0.45);
+  }
+
+  /* Tighten main padding already done above at 768px */
+  .app-shell__main { padding: 1.1rem 0.85rem; }
+
+  /* Page headers stack on mobile */
+  .pg-header { flex-direction: column; gap: 0.75rem; }
+  .pg-header .pk-btn { width: 100%; justify-content: center; }
+
+  /* Tables scroll horizontally */
+  .pk-card .pk-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* KPI cards: 2 columns */
+  .pk-kpi-row { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Modals full-width */
+  .pk-modal { max-width: calc(100vw - 2rem) !important; margin: 1rem; }
+  .pk-modal-bd { align-items: flex-end; padding-bottom: 0; }
+  .pk-modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important; }
+
+  /* Forms: single column */
+  .pk-form-row { grid-template-columns: 1fr !important; }
+
+  /* POS layout stacks */
+  .pos-layout { grid-template-columns: 1fr !important; }
+  .pos-cart    { order: -1; max-height: 42vh; overflow-y: auto; }
+
+  /* Reports grid */
+  .rpt-grid { grid-template-columns: 1fr !important; }
+
+  /* Vendor/delivery boards */
+  .vendor-layout, .delivery-board { grid-template-columns: 1fr !important; }
+
+  /* Admin page tabs scroll */
+  .admin-tabs { overflow-x: auto; flex-wrap: nowrap !important; }
+  .admin-tabs .pk-btn { white-space: nowrap; flex-shrink: 0; }
+}
+
+@media (max-width: 480px) {
+  .pk-kpi-row { grid-template-columns: 1fr 1fr !important; }
+  .auth-title  { font-size: 1.9rem; }
+}
+
 /* ── Shared page primitives ── */
 
 /* Page header */
@@ -654,20 +762,6 @@ body {
 }
 
 @media (max-width: 991px) {
-  .app-shell {
-    flex-direction: column;
-  }
-
-  .sidebar {
-    width: 100%;
-    min-height: auto;
-    position: static;
-  }
-
-  .app-shell__content {
-    padding: 1rem;
-  }
-
   .auth-stage {
     grid-template-columns: 1fr;
   }

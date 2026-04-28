@@ -5,7 +5,7 @@ import { useAuth } from '../../features/auth/AuthContext';
 import { useBranch } from '../../features/branches/BranchContext';
 import api from '../../services/api';
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }) {
   const { user, logout } = useAuth();
   const { activeBranch, switchBranch } = useBranch();
   const navigate = useNavigate();
@@ -13,13 +13,13 @@ export default function Sidebar() {
   const isSuperAdmin  = user?.role === 'superadmin';
   const isAdmin       = user?.role === 'admin';
   const isOwner       = !isSuperAdmin && !user?.parent_user_id;
-  const isBranchUser  = !!user?.locked_branch; // has branch_id — cannot switch
-  const modules       = user?.subscription?.modules ?? null; // null = no restriction
+  const isBranchUser  = !!user?.locked_branch;
+  const modules       = user?.subscription?.modules ?? null;
+  const unreadDemos   = user?.unread_demo_requests ?? 0;
 
   const [branches, setBranches] = useState([]);
 
   useEffect(() => {
-    // Branch users are permanently locked — no need to fetch the list
     if (isAdmin && !isBranchUser) {
       api.get('/branches').then(({ data }) => setBranches(data || [])).catch(() => {});
     } else {
@@ -32,6 +32,11 @@ export default function Sidebar() {
     navigate('/login', { replace: true });
   };
 
+  const handleNavClick = () => {
+    // Close drawer on mobile after navigation
+    onClose?.();
+  };
+
   const isVisible = (item) => {
     if (item.adminOnly && !isOwner) return false;
     if (item.module && modules !== null && !modules.includes(item.module)) return false;
@@ -42,26 +47,26 @@ export default function Sidebar() {
   const activeBranches = branches.filter(b => b.is_active);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${open ? 'sidebar--open' : ''}`}>
       {/* Brand */}
       <div className="sb-brand">
-        <div className="sb-brand__logo">
-          <i className="bi bi-flower3" />
-        </div>
+        <div className="sb-brand__logo"><i className="bi bi-flower3" /></div>
         <div style={{ minWidth: 0 }}>
           <div className="sb-brand__name">Pookal</div>
           <div className="sb-brand__sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {isSuperAdmin ? 'Platform Admin' : (user?.shop_name || 'Florist Suite')}
           </div>
         </div>
+        {/* Close button — mobile only */}
+        <button className="sb-close" onClick={onClose} aria-label="Close menu">
+          <i className="bi bi-x-lg" />
+        </button>
       </div>
 
-      {/* Branch context — locked badge for branch users */}
+      {/* Locked branch badge */}
       {isBranchUser && (
         <div style={{ padding: '0 0.75rem 0.5rem' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>
-            Branch
-          </div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Branch</div>
           <div style={{
             background: 'rgba(125,41,74,0.3)', border: '1px solid rgba(125,41,74,0.5)',
             borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.75rem',
@@ -73,12 +78,10 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Branch context switcher — only for shop owners/staff with multiple branches */}
+      {/* Branch switcher — admin only */}
       {isAdmin && !isBranchUser && activeBranches.length > 0 && (
         <div style={{ padding: '0 0.75rem 0.5rem' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>
-            Branch View
-          </div>
+          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Branch View</div>
           <select
             value={activeBranch?.id || ''}
             onChange={(e) => {
@@ -91,20 +94,14 @@ export default function Sidebar() {
               cursor: 'pointer', outline: 'none',
             }}
           >
-            <option value="" style={{ background: '#18181b', color: '#fff' }}>🏪 Main Shop (All)</option>
+            <option value="" style={{ background: '#18181b' }}>🏪 Main Shop (All)</option>
             {activeBranches.map(b => (
-              <option key={b.id} value={b.id} style={{ background: '#18181b', color: '#fff' }}>└ {b.name}</option>
+              <option key={b.id} value={b.id} style={{ background: '#18181b' }}>└ {b.name}</option>
             ))}
           </select>
-          {activeBranch ? (
-            <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem', textAlign: 'center' }}>
-              Sub-branch: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{activeBranch.name}</strong>
-            </div>
-          ) : (
-            <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.25rem', textAlign: 'center' }}>
-              Viewing all branches combined
-            </div>
-          )}
+          <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.25rem', textAlign: 'center' }}>
+            {activeBranch ? <><strong style={{ color: 'rgba(255,255,255,0.7)' }}>{activeBranch.name}</strong></> : 'Viewing all branches combined'}
+          </div>
         </div>
       )}
 
@@ -113,16 +110,21 @@ export default function Sidebar() {
         {isSuperAdmin ? (
           <NavLink
             to="/admin"
+            onClick={handleNavClick}
             className={({ isActive }) => `sb-link sb-link--admin ${isActive ? 'sb-link--active' : ''}`}
           >
             <i className="bi bi-shield-lock" />
             <span>Admin Panel</span>
+            {unreadDemos > 0 && (
+              <span className="sb-badge">{unreadDemos > 99 ? '99+' : unreadDemos}</span>
+            )}
           </NavLink>
         ) : (
           navigation.filter(isVisible).map(item => (
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={handleNavClick}
               className={({ isActive }) => `sb-link ${isActive ? 'sb-link--active' : ''}`}
             >
               <i className={`bi ${item.icon}`} />

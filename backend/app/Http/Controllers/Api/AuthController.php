@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\DemoRequest;
 use App\Models\User;
 use App\Support\Tenancy\TenantProvisioner;
 use Illuminate\Http\JsonResponse;
@@ -123,6 +124,10 @@ class AuthController
                     'plan_id' => $user->branch->plan_id,
                     'modules' => $branchPlan?->modules ?? null,
                 ] : null,
+                // Superadmin only: unread demo request count for notification badge.
+                'unread_demo_requests' => $user->isSuperAdmin()
+                    ? DemoRequest::where('status', 'new')->count()
+                    : null,
             ]),
         ]);
     }

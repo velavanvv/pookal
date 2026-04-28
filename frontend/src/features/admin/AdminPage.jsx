@@ -20,6 +20,7 @@ export default function AdminPage() {
   const [tenants, setTenants] = useState([]);
   const [plans, setPlans]     = useState([]);
   const [subs, setSubs]       = useState([]);
+  const [demoRequests, setDemoRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showNewCustomer, setShowNewCustomer]   = useState(false);
@@ -39,8 +40,10 @@ export default function AdminPage() {
       api.get('/admin/tenants'),
       api.get('/admin/plans'),
       api.get('/admin/subscriptions'),
-    ]).then(([s, t, p, sub]) => {
+      api.get('/demo/requests'),
+    ]).then(([s, t, p, sub, dr]) => {
       setStats(s.data); setTenants(t.data); setPlans(p.data); setSubs(sub.data);
+      setDemoRequests(dr.data?.data ?? []);
     }).finally(() => setLoading(false));
   };
 
@@ -108,14 +111,23 @@ export default function AdminPage() {
       )}
 
       {/* Tabs */}
-      <div className="pk-tabs">
+      <div className="pk-tabs admin-tabs" style={{ flexWrap: 'wrap' }}>
         {[
           { key: 'customers',     label: 'Customers',     icon: 'bi-people'          },
           { key: 'subscriptions', label: 'Subscriptions', icon: 'bi-calendar2-check' },
           { key: 'plans',         label: 'Plans',         icon: 'bi-box'             },
+          { key: 'demo',          label: 'Demo Requests', icon: 'bi-send',
+            badge: demoRequests.filter(r => r.status === 'new').length },
         ].map((t) => (
-          <button key={t.key} className={`pk-tab ${tab === t.key ? 'pk-tab--active' : ''}`} onClick={() => setTab(t.key)}>
-            <i className={`bi ${t.icon}`} style={{ marginRight: '0.4rem' }} />{t.label}
+          <button key={t.key} className={`pk-tab ${tab === t.key ? 'pk-tab--active' : ''}`} onClick={() => setTab(t.key)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <i className={`bi ${t.icon}`} />{t.label}
+            {t.badge > 0 && (
+              <span style={{ background: 'var(--pookal-rose)', color: '#fff', fontSize: '0.62rem', fontWeight: 700,
+                borderRadius: '999px', padding: '0.1em 0.45em', lineHeight: 1.5 }}>
+                {t.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -341,6 +353,11 @@ export default function AdminPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── DEMO REQUESTS TAB ── */}
+      {tab === 'demo' && (
+        <DemoRequestsPanel requests={demoRequests} onRefresh={fetchAll} />
       )}
 
       {/* ── MODALS ── */}
@@ -916,6 +933,104 @@ function WebsiteModal({ tenant, onClose }) {
         <button className="pk-btn pk-btn--ghost" onClick={onClose}>Close</button>
       </div>
     </PkModal>
+  );
+}
+
+// ── Demo Requests Panel ────────────────────────────────────────────────────────
+const DEMO_STATUS_COLORS = {
+  new:       { bg: '#dbeafe', color: '#1d4ed8', label: 'New'       },
+  contacted: { bg: '#fef9c3', color: '#854d0e', label: 'Contacted' },
+  converted: { bg: '#dcfce7', color: '#166534', label: 'Converted' },
+  declined:  { bg: '#f3f4f6', color: '#6b7280', label: 'Declined'  },
+};
+
+function DemoRequestsPanel({ requests, onRefresh }) {
+  const [updating, setUpdating] = useState(null);
+
+  const updateStatus = async (id, status) => {
+    setUpdating(id);
+    try {
+      await api.patch(`/demo/requests/${id}`, { status });
+      onRefresh();
+    } finally { setUpdating(null); }
+  };
+
+  const newCount = requests.filter(r => r.status === 'new').length;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+        <span style={{ fontSize: '0.82rem', color: 'var(--text-2)' }}>
+          {requests.length} total · <strong style={{ color: 'var(--pookal-rose)' }}>{newCount} new</strong>
+        </span>
+      </div>
+      {requests.length === 0 ? (
+        <div className="pk-empty">
+          <i className="bi bi-send" />
+          <h6>No demo requests yet</h6>
+          <p>When prospects submit a demo request from the login page, they'll appear here.</p>
+        </div>
+      ) : (
+        <div className="pk-card">
+          <table className="pk-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Business</th>
+                <th>Contact</th>
+                <th>City</th>
+                <th>Message</th>
+                <th>Received</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map(r => {
+                const s = DEMO_STATUS_COLORS[r.status] || DEMO_STATUS_COLORS.new;
+                return (
+                  <tr key={r.id} style={{ background: r.status === 'new' ? 'rgba(219,234,254,0.18)' : undefined }}>
+                    <td style={{ fontWeight: 600 }}>
+                      {r.status === 'new' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--pookal-rose)', display: 'inline-block', marginRight: '0.4rem', verticalAlign: 'middle' }} />}
+                      {r.name}
+                    </td>
+                    <td>{r.business_name}</td>
+                    <td style={{ fontSize: '0.78rem' }}>
+                      <div style={{ color: 'var(--text-2)' }}>{r.email}</div>
+                      {r.phone && <div style={{ color: 'var(--text-2)' }}>{r.phone}</div>}
+                    </td>
+                    <td style={{ color: 'var(--text-2)', fontSize: '0.82rem' }}>{r.city || '—'}</td>
+                    <td style={{ maxWidth: 220, fontSize: '0.78rem', color: 'var(--text-2)' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
+                        {r.message || '—'}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: '0.78rem', color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                      {new Date(r.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                    </td>
+                    <td>
+                      <select
+                        value={r.status}
+                        disabled={updating === r.id}
+                        onChange={e => updateStatus(r.id, e.target.value)}
+                        style={{
+                          background: s.bg, color: s.color, border: 'none',
+                          borderRadius: 'var(--radius-xs)', padding: '0.2rem 0.5rem',
+                          fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', outline: 'none',
+                        }}
+                      >
+                        {Object.entries(DEMO_STATUS_COLORS).map(([key, val]) => (
+                          <option key={key} value={key}>{val.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
