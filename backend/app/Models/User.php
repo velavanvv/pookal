@@ -22,6 +22,7 @@ class User extends Authenticatable
         'password',
         'parent_user_id',
         'branch_id',
+        'fcm_token',
     ];
 
     protected $hidden = [

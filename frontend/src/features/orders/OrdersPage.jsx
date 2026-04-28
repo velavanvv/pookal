@@ -64,7 +64,7 @@ export default function OrdersPage() {
             <i className="bi bi-shop" style={{ color: 'var(--text-3)' }} />
             <select
               className="pk-input"
-              style={{ width: 180 }}
+              style={{ width: 160 }}
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
             >
@@ -102,69 +102,119 @@ export default function OrdersPage() {
             <p>No {status !== 'all' ? status : ''} orders yet.</p>
           </div>
         ) : (
-          <table className="pk-table">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Customer / Recipient</th>
-                <th>Channel</th>
-                <th>Branch</th>
-                <th>Status</th>
-                <th>Delivery</th>
-                <th>Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop table */}
+            <table className="pk-table orders-desktop-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Customer / Recipient</th>
+                  <th>Channel</th>
+                  <th>Branch</th>
+                  <th>Status</th>
+                  <th>Delivery</th>
+                  <th>Total</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map(o => {
+                  const sm = STATUS_META[o.status]   || { cls: 'pk-badge--gray', label: o.status  };
+                  const cm = CHANNEL_META[o.channel] || { cls: 'pk-badge--gray', label: o.channel };
+                  return (
+                    <tr key={o.id}>
+                      <td><div style={{ fontWeight: 700 }}>{o.order_number}</div></td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{o.customer_name || o.recipient_name || '—'}</div>
+                        {o.recipient_phone && <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>{o.recipient_phone}</div>}
+                        {o.recipient_address && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {o.recipient_address}
+                          </div>
+                        )}
+                        {o.gift_message && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--c-green)', marginTop: 2 }}>
+                            <i className="bi bi-gift me-1" />"{o.gift_message}"
+                          </div>
+                        )}
+                      </td>
+                      <td><span className={`pk-badge ${cm.cls}`}>{cm.label}</span></td>
+                      <td>
+                        {o.branch_name
+                          ? <span className="pk-badge pk-badge--gray"><i className="bi bi-shop me-1" />{o.branch_name}</span>
+                          : <span style={{ color: 'var(--text-3)', fontSize: '0.78rem' }}>—</span>
+                        }
+                      </td>
+                      <td><span className={`pk-badge ${sm.cls}`}>{sm.label}</span></td>
+                      <td>
+                        {o.delivery_date && <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{o.delivery_date}</div>}
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>{o.delivery_time_slot || o.delivery_slot || '—'}</div>
+                      </td>
+                      <td style={{ fontWeight: 700 }}>Rs. {Number(o.grand_total).toLocaleString()}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          {(NEXT[o.status] || []).map(s => (
+                            <button key={s} className="pk-btn pk-btn--sm pk-btn--outline" onClick={() => advance(o.id, s)}>
+                              → {s}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Mobile card list */}
+            <div className="orders-mobile-list">
               {orders.map(o => {
-                const sm = STATUS_META[o.status]   || { cls: 'pk-badge--gray', label: o.status   };
-                const cm = CHANNEL_META[o.channel] || { cls: 'pk-badge--gray', label: o.channel  };
+                const sm = STATUS_META[o.status]   || { cls: 'pk-badge--gray', label: o.status  };
+                const cm = CHANNEL_META[o.channel] || { cls: 'pk-badge--gray', label: o.channel };
                 return (
-                  <tr key={o.id}>
-                    <td>
-                      <div style={{ fontWeight: 700 }}>{o.order_number}</div>
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{o.customer_name || o.recipient_name || '—'}</div>
-                      {o.recipient_phone && <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>{o.recipient_phone}</div>}
-                      {o.recipient_address && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {o.recipient_address}
-                        </div>
+                  <div key={o.id} className="order-card">
+                    <div className="order-card__top">
+                      <span className="order-card__num">{o.order_number}</span>
+                      <span className={`pk-badge ${sm.cls}`}>{sm.label}</span>
+                      <span className={`pk-badge ${cm.cls}`}>{cm.label}</span>
+                    </div>
+                    <div className="order-card__name">
+                      {o.customer_name || o.recipient_name || 'Walk-in'}
+                      {o.recipient_phone && <span className="order-card__phone"> · {o.recipient_phone}</span>}
+                    </div>
+                    {o.recipient_address && (
+                      <div className="order-card__addr">
+                        <i className="bi bi-geo-alt" /> {o.recipient_address}
+                      </div>
+                    )}
+                    {o.gift_message && (
+                      <div className="order-card__gift">
+                        <i className="bi bi-gift" /> "{o.gift_message}"
+                      </div>
+                    )}
+                    <div className="order-card__meta">
+                      {o.delivery_date && (
+                        <span><i className="bi bi-calendar3" /> {o.delivery_date}{o.delivery_time_slot ? ` · ${o.delivery_time_slot}` : ''}</span>
                       )}
-                      {o.gift_message && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--c-green)', marginTop: 2 }}>
-                          <i className="bi bi-gift me-1" />"{o.gift_message}"
-                        </div>
+                      {o.branch_name && (
+                        <span><i className="bi bi-shop" /> {o.branch_name}</span>
                       )}
-                    </td>
-                    <td><span className={`pk-badge ${cm.cls}`}>{cm.label}</span></td>
-                    <td>
-                      {o.branch_name
-                        ? <span className="pk-badge pk-badge--gray"><i className="bi bi-shop me-1" />{o.branch_name}</span>
-                        : <span style={{ color: 'var(--text-3)', fontSize: '0.78rem' }}>—</span>
-                      }
-                    </td>
-                    <td><span className={`pk-badge ${sm.cls}`}>{sm.label}</span></td>
-                    <td>
-                      {o.delivery_date && <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>{o.delivery_date}</div>}
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>{o.delivery_time_slot || o.delivery_slot || '—'}</div>
-                    </td>
-                    <td style={{ fontWeight: 700 }}>Rs. {Number(o.grand_total).toLocaleString()}</td>
-                    <td>
+                    </div>
+                    <div className="order-card__foot">
+                      <span className="order-card__total">Rs. {Number(o.grand_total).toLocaleString()}</span>
                       <div style={{ display: 'flex', gap: '0.4rem' }}>
                         {(NEXT[o.status] || []).map(s => (
-                          <button key={s} className="pk-btn pk-btn--sm pk-btn--outline" onClick={() => advance(o.id, s)}>
+                          <button key={s} className="pk-btn pk-btn--sm pk-btn--rose" onClick={() => advance(o.id, s)}>
                             → {s}
                           </button>
                         ))}
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
     </div>

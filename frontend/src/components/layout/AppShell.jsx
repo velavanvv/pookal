@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { useBranch } from '../../features/branches/BranchContext';
 import { useAuth } from '../../features/auth/AuthContext';
+import { useFcm } from '../../hooks/useFcm';
+import { usePwaInstall } from '../../hooks/usePwaInstall';
 
 export default function AppShell() {
   const { user } = useAuth();
@@ -15,8 +17,42 @@ export default function AppShell() {
   const branchInContext    = isBranchUser ? user.locked_branch : (canUseBranchSwitch ? activeBranch : null);
   const canSwitch          = canUseBranchSwitch && !!activeBranch;
 
+  const [orderToast, setOrderToast] = useState(null);
+  const handleFcmMessage = useCallback((payload) => {
+    const n = payload.notification ?? {};
+    setOrderToast({ title: n.title, body: n.body });
+    setTimeout(() => setOrderToast(null), 6000);
+  }, []);
+  useFcm(user, handleFcmMessage);
+
+  const { show: showInstall, install: installPwa, dismiss: dismissInstall } = usePwaInstall();
+
   return (
     <div className="app-shell">
+      {/* PWA install banner */}
+      {showInstall && (
+        <div className="pwa-install-banner">
+          <div className="pwa-install-banner__icon"><i className="bi bi-flower3" /></div>
+          <div className="pwa-install-banner__text">
+            <div className="pwa-install-banner__title">Install Pookal App</div>
+            <div className="pwa-install-banner__sub">Add to home screen for quick access</div>
+          </div>
+          <button className="pwa-install-banner__btn" onClick={installPwa}>Install</button>
+          <button className="pwa-install-banner__dismiss" onClick={dismissInstall}><i className="bi bi-x-lg" /></button>
+        </div>
+      )}
+
+      {/* FCM foreground notification toast */}
+      {orderToast && (
+        <div className="fcm-toast" onClick={() => setOrderToast(null)}>
+          <div className="fcm-toast__icon"><i className="bi bi-bag-heart-fill" /></div>
+          <div className="fcm-toast__content">
+            <div className="fcm-toast__title">{orderToast.title}</div>
+            <div className="fcm-toast__body">{orderToast.body}</div>
+          </div>
+          <button className="fcm-toast__close"><i className="bi bi-x-lg" /></button>
+        </div>
+      )}
       {/* Mobile overlay */}
       {sidebarOpen && <div className="sb-overlay" onClick={() => setSidebarOpen(false)} />}
 

@@ -7,6 +7,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\ShopSetting;
 use App\Models\StockLedger;
+use App\Services\FirebaseService;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -146,6 +147,14 @@ class StorefrontController
                 'notes'         => 'Online storefront order',
             ]);
         }
+
+        // Push notification to shop owner — fire and forget, never block the response.
+        app(FirebaseService::class)->notifyShopOwner(
+            $ownerId,
+            '🌸 New Online Order',
+            "Order {$order->order_number} — ₹" . number_format($order->grand_total, 2) . " from {$data['recipient_name']}",
+            ['order_number' => $order->order_number, 'channel' => 'online'],
+        );
 
         return response()->json([
             'message'      => 'Order placed successfully.',

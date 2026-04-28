@@ -37,6 +37,7 @@ Route::middleware(ResolveTenantContext::class)->group(function () {
 Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::post('/auth/fcm-token', [AuthController::class, 'saveFcmToken']);
 
     Route::prefix('dashboard')->group(function () {
         Route::get('/summary', [DashboardController::class, 'summary']);

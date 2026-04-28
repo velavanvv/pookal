@@ -132,8 +132,21 @@ class AuthController
         ]);
     }
 
+    public function saveFcmToken(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'token' => ['required', 'string', 'max:512'],
+        ]);
+
+        $request->user()->update(['fcm_token' => $data['token']]);
+
+        return response()->json(['message' => 'FCM token saved.']);
+    }
+
     public function logout(Request $request): JsonResponse
     {
+        // Clear FCM token on logout so stale devices don't receive notifications.
+        $request->user()->update(['fcm_token' => null]);
         $request->user()->currentAccessToken()?->delete();
 
         return response()->json([
