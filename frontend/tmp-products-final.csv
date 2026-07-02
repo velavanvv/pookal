@@ -1,0 +1,7 @@
+name,sku,category,price,unit,reorder_level,initial_stock,track_freshness,freshness_days,image_url
+Codex Final 1,CDX-FINAL-1781106256780-1,Bouquet,599,bunch,3,12,true,4,
+Codex Final 2,CDX-FINAL-1781106256780-2,Supply,639,piece,4,13,false,1,
+Codex Final 3,CDX-FINAL-1781106256780-3,Bouquet,679,bunch,5,14,true,6,
+Codex Final 4,CDX-FINAL-1781106256780-4,Supply,719,piece,6,15,false,1,
+Codex Final 5,CDX-FINAL-1781106256780-5,Bouquet,759,bunch,7,16,true,8,
+Codex Final 6,CDX-FINAL-1781106256780-6,Supply,799,piece,8,17,false,1,

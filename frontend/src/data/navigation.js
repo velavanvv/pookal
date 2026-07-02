@@ -1,5 +1,6 @@
 export const navigation = [
   { path: '/dashboard',      label: 'Dashboard', icon: 'bi-speedometer2', module: null         },
+  { path: '/products',       label: 'Products',   icon: 'bi-box2-heart',  module: 'products'   },
   { path: '/pos',            label: 'POS',        icon: 'bi-receipt',      module: 'pos'        },
   { path: '/inventory',      label: 'Inventory',  icon: 'bi-box-seam',     module: 'inventory'  },
   { path: '/orders',         label: 'Orders',     icon: 'bi-bag-check',    module: 'orders'     },

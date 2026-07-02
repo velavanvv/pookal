@@ -87,12 +87,12 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        $allModules = ['pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
+        $allModules = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
 
         $plans = [];
         foreach ([
-            ['name' => 'Free Trial',   'desc' => '14-day free trial — all modules, 1 user.',                              'pm' => 0,     'py' => 0,      'modules' => $allModules,                                    'max' => 1],
-            ['name' => 'Starter',      'desc' => 'POS + Inventory + Orders. Ideal for a single-counter shop.',            'pm' => 999,   'py' => 9_999,  'modules' => ['pos','inventory','orders','settings'],        'max' => 2],
+            ['name' => 'Free Trial',   'desc' => '7-day free trial — all modules, 1 user.',                               'pm' => 0,     'py' => 0,      'modules' => $allModules,                                    'max' => 1],
+            ['name' => 'Starter',      'desc' => 'Products + POS + Inventory + Orders. Ideal for a single-counter shop.', 'pm' => 999,   'py' => 9_999,  'modules' => ['products','pos','inventory','orders','settings'], 'max' => 2],
             ['name' => 'Pro',          'desc' => 'All modules + CRM + Delivery + Reports + Storefront website.',          'pm' => 1_999, 'py' => 19_999, 'modules' => $allModules,                                    'max' => 5],
             ['name' => 'Enterprise',   'desc' => 'Multi-branch chain. Unlimited users, all modules, priority support.',   'pm' => 4_999, 'py' => 49_999, 'modules' => $allModules,                                    'max' => 999],
         ] as $p) {

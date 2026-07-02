@@ -15,9 +15,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminController
 {
+    private const MODULES = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
+
     public function __construct(
         private readonly TenantProvisioner $provisioner,
         private readonly TenantConnectionManager $connections,
@@ -38,7 +41,13 @@ class AdminController
 
     public function listPlans(): JsonResponse
     {
-        return response()->json(Plan::orderBy('price_yearly')->get());
+        return response()->json(
+            Plan::orderBy('price_yearly')
+                ->get()
+                ->map(fn (Plan $plan) => array_merge($plan->toArray(), [
+                    'modules' => $plan->resolvedModules(),
+                ]))
+        );
     }
 
     public function storePlan(Request $request): JsonResponse
@@ -51,7 +60,7 @@ class AdminController
             'price_monthly' => ['required', 'numeric', 'min:0'],
             'price_yearly'  => ['required', 'numeric', 'min:0'],
             'modules'       => ['required', 'array', 'min:1'],
-            'modules.*'     => ['string', 'in:pos,inventory,orders,crm,delivery,reports,settings,website'],
+            'modules.*'     => ['string', Rule::in(self::MODULES)],
             'max_users'     => ['nullable', 'integer', 'min:1'],
             'is_active'     => ['nullable', 'boolean'],
         ]);
@@ -70,7 +79,7 @@ class AdminController
             'price_monthly' => ['sometimes', 'numeric', 'min:0'],
             'price_yearly'  => ['sometimes', 'numeric', 'min:0'],
             'modules'       => ['sometimes', 'array', 'min:1'],
-            'modules.*'     => ['string', 'in:pos,inventory,orders,crm,delivery,reports,settings,website'],
+            'modules.*'     => ['string', Rule::in(self::MODULES)],
             'max_users'     => ['sometimes', 'integer', 'min:1'],
             'is_active'     => ['sometimes', 'boolean'],
         ]);
@@ -151,7 +160,7 @@ class AdminController
             'phone'         => ['nullable', 'string', 'max:20'],
             'role'          => ['sometimes', 'string', 'in:admin,staff'],
             'plan_id'       => ['required', 'exists:plans,id'],
-            'billing_cycle' => ['required', 'in:monthly,yearly'],
+            'billing_cycle' => ['required', 'in:monthly,yearly,trial'],
             'start_date'    => ['required', 'date'],
             'notes'         => ['nullable', 'string', 'max:500'],
         ]);
@@ -167,21 +176,11 @@ class AdminController
 
         $this->provisioner->provisionMainDatabase($user);
 
-        $plan   = Plan::findOrFail($data['plan_id']);
-        $start  = Carbon::parse($data['start_date']);
-        $end    = $data['billing_cycle'] === 'yearly' ? $start->copy()->addYear() : $start->copy()->addMonth();
-        $amount = $data['billing_cycle'] === 'yearly' ? $plan->price_yearly : $plan->price_monthly;
+        $plan = Plan::findOrFail($data['plan_id']);
 
         Subscription::create([
             'user_id'           => $user->id,
-            'plan_id'           => $plan->id,
-            'status'            => 'active',
-            'billing_cycle'     => $data['billing_cycle'],
-            'amount_paid'       => $amount,
-            'start_date'        => $start,
-            'end_date'          => $end,
-            'next_renewal_date' => $end,
-            'auto_renew'        => true,
+            ...$this->buildSubscriptionPayload($plan, $data),
             'notes'             => $data['notes'] ?? null,
         ]);
 
@@ -230,29 +229,19 @@ class AdminController
 
         $data = $request->validate([
             'plan_id'       => ['required', 'exists:plans,id'],
-            'billing_cycle' => ['required', 'in:monthly,yearly'],
+            'billing_cycle' => ['required', 'in:monthly,yearly,trial'],
             'start_date'    => ['required', 'date'],
             'notes'         => ['nullable', 'string', 'max:500'],
         ]);
 
-        $plan   = Plan::findOrFail($data['plan_id']);
-        $start  = Carbon::parse($data['start_date']);
-        $end    = $data['billing_cycle'] === 'yearly' ? $start->copy()->addYear() : $start->copy()->addMonth();
-        $amount = $data['billing_cycle'] === 'yearly' ? $plan->price_yearly : $plan->price_monthly;
+        $plan = Plan::findOrFail($data['plan_id']);
 
         // Expire any previous active subscription
         $user->subscriptions()->whereIn('status', ['active', 'trial'])->update(['status' => 'expired']);
 
         $sub = Subscription::create([
             'user_id'           => $user->id,
-            'plan_id'           => $plan->id,
-            'status'            => 'active',
-            'billing_cycle'     => $data['billing_cycle'],
-            'amount_paid'       => $amount,
-            'start_date'        => $start,
-            'end_date'          => $end,
-            'next_renewal_date' => $end,
-            'auto_renew'        => true,
+            ...$this->buildSubscriptionPayload($plan, $data),
             'notes'             => $data['notes'] ?? null,
         ]);
 
@@ -455,7 +444,7 @@ class AdminController
                 'id'                => $sub->id,
                 'plan_id'           => $sub->plan_id,
                 'plan_name'         => $sub->plan?->name,
-                'modules'           => $sub->plan?->modules ?? [],
+                'modules'           => $sub->plan?->resolvedModules() ?? [],
                 'status'            => $sub->status,
                 'billing_cycle'     => $sub->billing_cycle,
                 'amount_paid'       => $sub->amount_paid,
@@ -465,6 +454,40 @@ class AdminController
                 'days_left'         => $sub->daysUntilRenewal(),
                 'auto_renew'        => $sub->auto_renew,
             ] : null,
+        ];
+    }
+
+    private function buildSubscriptionPayload(Plan $plan, array $data): array
+    {
+        $start = Carbon::parse($data['start_date']);
+
+        if ($plan->isTrialPlan() || ($data['billing_cycle'] ?? null) === 'trial') {
+            $end = $start->copy()->addDays(7);
+
+            return [
+                'plan_id'           => $plan->id,
+                'status'            => 'trial',
+                'billing_cycle'     => 'trial',
+                'amount_paid'       => 0,
+                'start_date'        => $start,
+                'end_date'          => $end,
+                'next_renewal_date' => $end,
+                'auto_renew'        => false,
+            ];
+        }
+
+        $isYearly = ($data['billing_cycle'] ?? 'monthly') === 'yearly';
+        $end = $isYearly ? $start->copy()->addYear() : $start->copy()->addMonth();
+
+        return [
+            'plan_id'           => $plan->id,
+            'status'            => 'active',
+            'billing_cycle'     => $isYearly ? 'yearly' : 'monthly',
+            'amount_paid'       => $isYearly ? $plan->price_yearly : $plan->price_monthly,
+            'start_date'        => $start,
+            'end_date'          => $end,
+            'next_renewal_date' => $end,
+            'auto_renew'        => true,
         ];
     }
 }

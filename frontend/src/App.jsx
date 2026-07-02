@@ -4,6 +4,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import SuperAdminRoute from './components/auth/SuperAdminRoute';
 import ShopRoute from './components/auth/ShopRoute';
 import DashboardPage from './features/dashboard/DashboardPage';
+import ProductsPage from './features/products/ProductsPage';
 import PosPage from './features/pos/PosPage';
 import InventoryPage from './features/inventory/InventoryPage';
 import OrdersPage from './features/orders/OrdersPage';
@@ -40,14 +41,15 @@ export default function App() {
 
         {/* ── Shop routes (blocked for superadmin) ── */}
         <Route path="/dashboard"     element={<ShopRoute><DashboardPage /></ShopRoute>} />
-        <Route path="/pos"           element={<ShopRoute><PosPage /></ShopRoute>} />
-        <Route path="/inventory"     element={<ShopRoute><InventoryPage /></ShopRoute>} />
-        <Route path="/orders"        element={<ShopRoute><OrdersPage /></ShopRoute>} />
-        <Route path="/crm"           element={<ShopRoute><CrmPage /></ShopRoute>} />
-        <Route path="/delivery"      element={<ShopRoute><DeliveryPage /></ShopRoute>} />
-        <Route path="/reports"       element={<ShopRoute><ReportsPage /></ShopRoute>} />
-        <Route path="/website-config" element={<ShopRoute><WebsiteConfigPage /></ShopRoute>} />
-        <Route path="/vendor"        element={<ShopRoute><VendorPage /></ShopRoute>} />
+        <Route path="/products"      element={<ShopRoute requiredModule="products"><ProductsPage /></ShopRoute>} />
+        <Route path="/pos"           element={<ShopRoute requiredModule="pos"><PosPage /></ShopRoute>} />
+        <Route path="/inventory"     element={<ShopRoute requiredModule="inventory"><InventoryPage /></ShopRoute>} />
+        <Route path="/orders"        element={<ShopRoute requiredModule="orders"><OrdersPage /></ShopRoute>} />
+        <Route path="/crm"           element={<ShopRoute requiredModule="crm"><CrmPage /></ShopRoute>} />
+        <Route path="/delivery"      element={<ShopRoute requiredModule="delivery"><DeliveryPage /></ShopRoute>} />
+        <Route path="/reports"       element={<ShopRoute requiredModule="reports"><ReportsPage /></ShopRoute>} />
+        <Route path="/website-config" element={<ShopRoute requiredModule="website"><WebsiteConfigPage /></ShopRoute>} />
+        <Route path="/vendor"        element={<ShopRoute requiredModule="vendor"><VendorPage /></ShopRoute>} />
         <Route path="/branches"      element={<ShopRoute><BranchesPage /></ShopRoute>} />
         <Route path="/users"         element={<ShopRoute><UsersPage /></ShopRoute>} />
         <Route path="/settings"      element={<ShopRoute><SettingsPage /></ShopRoute>} />

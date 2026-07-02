@@ -44,6 +44,10 @@ class OrderController
                 'recipient_name'     => $order->recipient_name,
                 'recipient_phone'    => $order->recipient_phone,
                 'recipient_address'  => $order->recipient_address,
+                'delivery_area'      => $order->delivery_area,
+                'customer_latitude'  => $order->customer_latitude,
+                'customer_longitude' => $order->customer_longitude,
+                'location_source'    => $order->location_source,
                 'gift_message'       => $order->gift_message,
                 'created_at'         => $order->created_at,
             ];

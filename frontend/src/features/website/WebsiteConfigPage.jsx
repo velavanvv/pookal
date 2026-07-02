@@ -15,6 +15,8 @@ const DEFAULTS = {
   website_subscription_amount: '999',
   website_contact_phone: '',
   website_contact_email: '',
+  website_delivery_areas: '',
+  website_location_prompt: '',
   website_share_url: '',
 };
 
@@ -321,6 +323,26 @@ export default function WebsiteConfigPage() {
                     <i className="bi bi-envelope" />
                     <input type="email" className="wc-input" value={form.website_contact_email || ''} onChange={e => setField('website_contact_email', e.target.value)} placeholder="flowers@yourshop.com" />
                   </div>
+                </div>
+                <div className="wc-field">
+                  <label>Delivery areas</label>
+                  <textarea
+                    className="wc-input wc-textarea"
+                    rows={3}
+                    value={form.website_delivery_areas || ''}
+                    onChange={e => setField('website_delivery_areas', e.target.value)}
+                    placeholder="Anna Nagar, T Nagar, Velachery, Adyar"
+                  />
+                  <span className="wc-field-hint">Use commas to separate the areas your shop can deliver to.</span>
+                </div>
+                <div className="wc-field">
+                  <label>Location prompt</label>
+                  <input
+                    className="wc-input"
+                    value={form.website_location_prompt || ''}
+                    onChange={e => setField('website_location_prompt', e.target.value)}
+                    placeholder="Enter your area to confirm delivery coverage."
+                  />
                 </div>
               </div>
             </div>

@@ -29,6 +29,8 @@ class WebsiteConfigController
             'website_subscription_amount' => '999',
             'website_contact_phone' => $user->phone ?: '',
             'website_contact_email' => $user->email,
+            'website_delivery_areas' => '',
+            'website_location_prompt' => 'Enter your area to confirm delivery coverage.',
         ];
 
         $config = array_merge($defaults, ShopSetting::allAsMap($user->shopOwnerId()));
@@ -58,6 +60,8 @@ class WebsiteConfigController
             'website_subscription_amount' => ['sometimes', 'numeric', 'min:0'],
             'website_contact_phone' => ['sometimes', 'string', 'max:20'],
             'website_contact_email' => ['sometimes', 'email', 'max:120'],
+            'website_delivery_areas' => ['sometimes', 'string', 'max:600'],
+            'website_location_prompt' => ['sometimes', 'string', 'max:180'],
         ]);
 
         if (isset($data['website_slug'])) {

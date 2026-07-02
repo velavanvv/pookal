@@ -55,6 +55,12 @@ class StorefrontController
                 'secondary_color' => $settings['website_secondary_color'] ?? '#25543a',
                 'phone' => $settings['website_contact_phone'] ?? null,
                 'email' => $settings['website_contact_email'] ?? null,
+                'delivery_areas' => collect(explode(',', (string) ($settings['website_delivery_areas'] ?? '')))
+                    ->map(fn ($area) => trim($area))
+                    ->filter()
+                    ->values()
+                    ->all(),
+                'location_prompt' => $settings['website_location_prompt'] ?? 'Enter your area to confirm delivery coverage.',
                 'slug' => $slug,
             ],
             'products' => $products,
@@ -75,6 +81,10 @@ class StorefrontController
             'recipient_name'     => ['required', 'string', 'max:120'],
             'recipient_phone'    => ['required', 'string', 'max:20'],
             'recipient_address'  => ['required', 'string', 'max:400'],
+            'delivery_area'      => ['nullable', 'string', 'max:120'],
+            'customer_latitude'  => ['nullable', 'numeric', 'between:-90,90'],
+            'customer_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'location_source'    => ['nullable', 'string', 'max:30'],
             'delivery_date'      => ['required', 'date', 'after_or_equal:today'],
             'delivery_time_slot' => ['required', 'string', 'max:60'],
             'gift_message'       => ['nullable', 'string', 'max:300'],
@@ -121,6 +131,11 @@ class StorefrontController
             'recipient_name'     => $data['recipient_name'],
             'recipient_phone'    => $data['recipient_phone'],
             'recipient_address'  => $data['recipient_address'],
+            'delivery_area'      => $data['delivery_area'] ?? null,
+            'customer_latitude'  => $data['customer_latitude'] ?? null,
+            'customer_longitude' => $data['customer_longitude'] ?? null,
+            'location_source'    => $data['location_source'] ?? null,
+            'location_captured_at' => !empty($data['customer_latitude']) && !empty($data['customer_longitude']) ? now() : null,
             'delivery_date'      => $data['delivery_date'],
             'delivery_time_slot' => $data['delivery_time_slot'],
             'gift_message'       => $data['gift_message'] ?? null,

@@ -1,0 +1,11 @@
+name,sku,category,price,unit,reorder_level,initial_stock,track_freshness,freshness_days,image_url
+Codex Product 1,CDX-1781106187969-1,Bouquet,199,bunch,5,10,true,3,
+Codex Product 2,CDX-1781106187969-2,Supply,249,piece,6,11,false,,
+Codex Product 3,CDX-1781106187969-3,Bouquet,299,bunch,7,12,true,5,
+Codex Product 4,CDX-1781106187969-4,Supply,349,piece,8,13,false,,
+Codex Product 5,CDX-1781106187969-5,Bouquet,399,bunch,9,14,true,7,
+Codex Product 6,CDX-1781106187969-6,Supply,449,piece,10,15,false,,
+Codex Product 7,CDX-1781106187969-7,Bouquet,499,bunch,11,16,true,9,
+Codex Product 8,CDX-1781106187969-8,Supply,549,piece,12,17,false,,
+Codex Product 9,CDX-1781106187969-9,Bouquet,599,bunch,13,18,true,11,
+Codex Product 10,CDX-1781106187969-10,Supply,649,piece,14,19,false,,

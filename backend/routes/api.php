@@ -46,6 +46,7 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
     Route::prefix('catalog')->group(function () {
         Route::get('/products', [CatalogController::class, 'index']);
         Route::post('/products', [CatalogController::class, 'store']);
+        Route::post('/products/import', [CatalogController::class, 'import']);
     });
 
     Route::prefix('inventory')->group(function () {
