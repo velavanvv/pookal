@@ -1,0 +1,4 @@
+name,sku,category,price,unit,reorder_level,initial_stock,track_freshness,freshness_days,image_url
+Red Rose Bouquet,ROSE-RED-NEW,Bouquet,799,bunch,10,25,true,3,https://example.com/rose-bouquet.jpg
+White Lily Bunch,LILY-WHT-NEW,Bunch,549,bunch,8,18,true,4,https://example.com/lily-bunch.jpg
+Gift Flower Box,BOX-GIFT-001,Arrangement,1299,piece,5,6,false,,https://example.com/gift-box.jpg

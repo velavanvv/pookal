@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import api from '../../services/api';
 
-const ALL_MODULES = ['pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'settings', 'website'];
+const ALL_MODULES = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
 
 const STATUS_BADGE = {
   active:    'pk-badge--success',
@@ -13,6 +13,39 @@ const STATUS_BADGE = {
 };
 
 const DAYS_WARN = 30;
+const MODULE_LABELS = {
+  products: 'Products',
+  pos: 'POS',
+  inventory: 'Inventory',
+  orders: 'Orders',
+  crm: 'CRM',
+  delivery: 'Delivery',
+  reports: 'Reports',
+  vendor: 'Vendor',
+  settings: 'Settings',
+  website: 'Website',
+};
+
+function formatPlanPrice(plan, cycle) {
+  if (!plan) return '—';
+  if (cycle === 'trial' || plan.name === 'Free Trial') return 'Free';
+  const amount = cycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
+  return `Rs. ${Number(amount).toLocaleString()}`;
+}
+
+function getUpgradeCandidates(plans, tenant) {
+  const currentPlanId = tenant?.subscription?.plan_id;
+  const currentPrice = Number(
+    tenant?.subscription?.billing_cycle === 'yearly'
+      ? tenant?.subscription?.amount_paid ?? 0
+      : tenant?.subscription?.amount_paid ?? 0
+  );
+
+  return plans
+    .filter((plan) => plan.is_active && plan.id !== currentPlanId)
+    .sort((a, b) => Number(a.price_monthly) - Number(b.price_monthly))
+    .filter((plan) => Number(plan.price_monthly) >= currentPrice || tenant?.subscription?.status !== 'active');
+}
 
 export default function AdminPage() {
   const [tab, setTab]         = useState('customers');
@@ -170,7 +203,16 @@ export default function AdminPage() {
                         <div>{t.shop_name || '—'}</div>
                         {t.phone && <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>{t.phone}</div>}
                       </td>
-                      <td>{sub?.plan_name || <span style={{ color: 'var(--text-3)' }}>No plan</span>}</td>
+                      <td>
+                        {sub ? (
+                          <div className="admin-plan-cell">
+                            <div className="admin-plan-cell__name">{sub.plan_name}</div>
+                            <div className="admin-plan-cell__meta">
+                              {sub.modules?.length || 0} modules · {formatPlanPrice(sub, sub.billing_cycle)} / {sub.billing_cycle}
+                            </div>
+                          </div>
+                        ) : <span style={{ color: 'var(--text-3)' }}>No plan</span>}
+                      </td>
                       <td>
                         {sub ? (
                           <span className={`pk-badge ${STATUS_BADGE[sub.status] || 'pk-badge--gray'}`}>{sub.status}</span>
@@ -215,7 +257,7 @@ export default function AdminPage() {
                         <div style={{ display: 'flex', gap: '0.35rem' }}>
                           <button className="pk-btn pk-btn--sm pk-btn--outline" style={{ color: '#16a34a', borderColor: '#86efac' }} title="Renew / Change Plan"
                             onClick={() => { setSelectedTenant(t); setShowRenew(true); }}>
-                            <i className="bi bi-arrow-repeat" />
+                            <i className="bi bi-rocket-takeoff" />
                           </button>
                           <button className="pk-btn pk-btn--sm pk-btn--outline" style={{ color: '#7c3aed', borderColor: '#c4b5fd' }} title="Manage Branches"
                             onClick={() => { setBranchesTenant(t); setShowBranches(true); }}>
@@ -398,19 +440,22 @@ function CustomerModal({ plans, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const selectedPlan = plans.find((p) => String(p.id) === String(form.plan_id));
+  const isTrialPlan = selectedPlan?.name === 'Free Trial';
+  const effectiveCycle = isTrialPlan ? 'trial' : form.billing_cycle;
+  const price = selectedPlan
+    ? (effectiveCycle === 'yearly' ? selectedPlan.price_yearly : effectiveCycle === 'monthly' ? selectedPlan.price_monthly : 0)
+    : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError(null);
     try {
-      await api.post('/admin/tenants', form); onSaved();
+      await api.post('/admin/tenants', { ...form, billing_cycle: effectiveCycle }); onSaved();
     } catch (err) {
       const errs = err?.response?.data?.errors;
       setError(errs ? Object.values(errs).flat().join(' ') : 'Failed to create shop.');
     } finally { setSaving(false); }
   };
-
-  const selectedPlan = plans.find((p) => String(p.id) === String(form.plan_id));
-  const price = selectedPlan ? (form.billing_cycle === 'yearly' ? selectedPlan.price_yearly : selectedPlan.price_monthly) : null;
 
   return (
     <PkModal title="Create New Shop" onClose={onClose} wide>
@@ -442,16 +487,23 @@ function CustomerModal({ plans, onClose, onSaved }) {
             </div>
             <div className="pk-field">
               <label>Billing Cycle *</label>
-              <select className="pk-input" value={form.billing_cycle} onChange={(e) => set('billing_cycle', e.target.value)}>
-                <option value="yearly">Yearly</option>
-                <option value="monthly">Monthly</option>
+              <select className="pk-input" value={effectiveCycle} onChange={(e) => set('billing_cycle', e.target.value)} disabled={isTrialPlan}>
+                {isTrialPlan ? (
+                  <option value="trial">7-day Trial</option>
+                ) : (
+                  <>
+                    <option value="yearly">Yearly</option>
+                    <option value="monthly">Monthly</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="pk-field"><label>Start Date *</label><input type="date" className="pk-input" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} required /></div>
           </div>
           {price !== null && (
             <div style={{ background: '#dbeafe', border: '1.5px solid #93c5fd', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#1d4ed8', marginTop: '0.5rem' }}>
-              Amount: <strong>Rs. {Number(price).toLocaleString()}</strong> / {form.billing_cycle}
+              Amount: <strong>Rs. {Number(price).toLocaleString()}</strong> / {effectiveCycle}
+              {isTrialPlan && <span style={{ marginLeft: '1rem' }}>Trial length: 7 days</span>}
               {selectedPlan && <span style={{ marginLeft: '1rem' }}>Modules: {(selectedPlan.modules || []).join(', ')}</span>}
             </div>
           )}
@@ -746,7 +798,7 @@ function BranchForm({ tenantId, branch, plans = [], onClose, onSaved }) {
 function RenewModal({ tenant, plans, onClose, onSaved }) {
   const [form, setForm] = useState({
     plan_id:       tenant.subscription?.plan_id || '',
-    billing_cycle: tenant.subscription?.billing_cycle || 'yearly',
+    billing_cycle: tenant.subscription?.billing_cycle === 'trial' ? 'monthly' : (tenant.subscription?.billing_cycle || 'yearly'),
     start_date:    new Date().toISOString().slice(0, 10),
     notes:         '',
   });
@@ -755,17 +807,24 @@ function RenewModal({ tenant, plans, onClose, onSaved }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const selectedPlan = plans.find((p) => String(p.id) === String(form.plan_id));
-  const price = selectedPlan ? (form.billing_cycle === 'yearly' ? selectedPlan.price_yearly : selectedPlan.price_monthly) : null;
+  const isTrialPlan = selectedPlan?.name === 'Free Trial';
+  const effectiveCycle = isTrialPlan ? 'trial' : form.billing_cycle;
+  const currentPlan = plans.find((p) => String(p.id) === String(tenant.subscription?.plan_id));
+  const upgradeCandidates = getUpgradeCandidates(plans, tenant);
+  const price = selectedPlan
+    ? (effectiveCycle === 'yearly' ? selectedPlan.price_yearly : effectiveCycle === 'monthly' ? selectedPlan.price_monthly : 0)
+    : null;
   const endDate = form.start_date ? (() => {
     const d = new Date(form.start_date);
-    if (form.billing_cycle === 'yearly') d.setFullYear(d.getFullYear() + 1);
+    if (effectiveCycle === 'trial') d.setDate(d.getDate() + 7);
+    else if (effectiveCycle === 'yearly') d.setFullYear(d.getFullYear() + 1);
     else d.setMonth(d.getMonth() + 1);
     return d.toISOString().slice(0, 10);
   })() : '—';
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError(null);
-    try { await api.post(`/admin/tenants/${tenant.id}/renew`, form); onSaved(); }
+    try { await api.post(`/admin/tenants/${tenant.id}/renew`, { ...form, billing_cycle: effectiveCycle }); onSaved(); }
     catch (err) { setError(err?.response?.data?.message || 'Failed to renew.'); }
     finally { setSaving(false); }
   };
@@ -780,6 +839,48 @@ function RenewModal({ tenant, plans, onClose, onSaved }) {
             Expires: <strong>{tenant.subscription?.end_date || 'N/A'}</strong> ·
             Status: <span className={`pk-badge ${STATUS_BADGE[tenant.subscription?.status] || 'pk-badge--gray'}`}>{tenant.subscription?.status || '—'}</span>
           </div>
+          {currentPlan && (
+            <div className="admin-upgrade-current">
+              <div>
+                <div className="admin-upgrade-current__eyebrow">Current plan details</div>
+                <div className="admin-upgrade-current__title">{currentPlan.name}</div>
+                <div className="admin-upgrade-current__meta">
+                  {formatPlanPrice(currentPlan, tenant.subscription?.billing_cycle)} / {tenant.subscription?.billing_cycle || 'cycle'} · Max users {currentPlan.max_users}
+                </div>
+              </div>
+              <div className="admin-upgrade-current__modules">
+                {(currentPlan.modules || []).map((module) => (
+                  <span key={module} className="pk-badge pk-badge--gray">{MODULE_LABELS[module] || module}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {upgradeCandidates.length > 0 && (
+            <div className="admin-upgrade-grid">
+              {upgradeCandidates.slice(0, 3).map((plan) => (
+                <button
+                  key={plan.id}
+                  type="button"
+                  className={`admin-upgrade-card ${String(form.plan_id) === String(plan.id) ? 'admin-upgrade-card--active' : ''}`}
+                  onClick={() => set('plan_id', String(plan.id))}
+                >
+                  <div className="admin-upgrade-card__top">
+                    <div className="admin-upgrade-card__name">{plan.name}</div>
+                    <span className="pk-badge pk-badge--success">{plan.modules?.length || 0} modules</span>
+                  </div>
+                  <div className="admin-upgrade-card__price">
+                    {formatPlanPrice(plan, effectiveCycle === 'trial' ? 'monthly' : effectiveCycle)}
+                    <span>{effectiveCycle === 'yearly' ? '/ year' : effectiveCycle === 'monthly' ? '/ month' : ''}</span>
+                  </div>
+                  <div className="admin-upgrade-card__modules">
+                    {(plan.modules || []).slice(0, 5).map((module) => (
+                      <span key={module}>{MODULE_LABELS[module] || module}</span>
+                    ))}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="pk-form-row">
             <div className="pk-field">
               <label>New Plan *</label>
@@ -790,9 +891,15 @@ function RenewModal({ tenant, plans, onClose, onSaved }) {
             </div>
             <div className="pk-field">
               <label>Billing Cycle *</label>
-              <select className="pk-input" value={form.billing_cycle} onChange={(e) => set('billing_cycle', e.target.value)}>
-                <option value="yearly">Yearly</option>
-                <option value="monthly">Monthly</option>
+              <select className="pk-input" value={effectiveCycle} onChange={(e) => set('billing_cycle', e.target.value)} disabled={isTrialPlan}>
+                {isTrialPlan ? (
+                  <option value="trial">7-day Trial</option>
+                ) : (
+                  <>
+                    <option value="yearly">Yearly</option>
+                    <option value="monthly">Monthly</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="pk-field"><label>Start Date *</label><input type="date" className="pk-input" value={form.start_date} onChange={(e) => set('start_date', e.target.value)} required /></div>
@@ -800,8 +907,31 @@ function RenewModal({ tenant, plans, onClose, onSaved }) {
           </div>
           {price !== null && (
             <div style={{ background: '#dcfce7', border: '1.5px solid #86efac', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#15803d', marginTop: '0.5rem' }}>
-              Amount: <strong>Rs. {Number(price).toLocaleString()}</strong> / {form.billing_cycle}
+              Amount: <strong>Rs. {Number(price).toLocaleString()}</strong> / {effectiveCycle}
+              {isTrialPlan && <span style={{ marginLeft: '1rem' }}>Trial length: 7 days</span>}
               {selectedPlan && <span style={{ marginLeft: '1rem' }}>Modules: {(selectedPlan.modules || []).join(', ')}</span>}
+            </div>
+          )}
+          {selectedPlan && (
+            <div className="admin-upgrade-compare">
+              <div className="admin-upgrade-compare__col">
+                <div className="admin-upgrade-compare__label">Current</div>
+                <div className="admin-upgrade-compare__plan">{tenant.subscription?.plan_name || 'None'}</div>
+                <div className="admin-upgrade-compare__list">
+                  {((currentPlan?.modules) || []).map((module) => (
+                    <div key={module}><i className="bi bi-check2" /> {MODULE_LABELS[module] || module}</div>
+                  ))}
+                </div>
+              </div>
+              <div className="admin-upgrade-compare__col admin-upgrade-compare__col--next">
+                <div className="admin-upgrade-compare__label">Selected upgrade</div>
+                <div className="admin-upgrade-compare__plan">{selectedPlan.name}</div>
+                <div className="admin-upgrade-compare__list">
+                  {(selectedPlan.modules || []).map((module) => (
+                    <div key={module}><i className="bi bi-stars" /> {MODULE_LABELS[module] || module}</div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
           <div className="pk-field" style={{ marginTop: '0.75rem' }}><label>Notes</label><textarea className="pk-input pk-textarea" rows={2} value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
@@ -810,7 +940,7 @@ function RenewModal({ tenant, plans, onClose, onSaved }) {
           <button type="button" className="pk-btn pk-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="pk-btn pk-btn--rose" disabled={saving}>
             {saving ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-arrow-repeat" />}
-            Renew Subscription
+            Upgrade Subscription
           </button>
         </div>
       </form>

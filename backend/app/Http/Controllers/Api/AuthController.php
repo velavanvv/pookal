@@ -88,7 +88,7 @@ class AuthController
         if ($branchPlan) {
             $subscriptionData = [
                 'plan_name' => $branchPlan->name,
-                'modules'   => $branchPlan->modules ?? [],
+                'modules'   => $branchPlan->resolvedModules(),
                 'max_users' => $branchPlan->max_users,
                 'status'    => $sub?->status ?? 'active',
                 'end_date'  => $sub?->end_date?->toDateString() ?? now()->addYear()->toDateString(),
@@ -97,7 +97,7 @@ class AuthController
         } elseif ($sub) {
             $subscriptionData = [
                 'plan_name' => $sub->plan?->name,
-                'modules'   => $sub->plan?->modules ?? [],
+                'modules'   => $sub->plan?->resolvedModules() ?? [],
                 'max_users' => $sub->plan?->max_users,
                 'status'    => $sub->status,
                 'end_date'  => $sub->end_date->toDateString(),
@@ -122,7 +122,7 @@ class AuthController
                     'name'    => $user->branch->name,
                     'code'    => $user->branch->code,
                     'plan_id' => $user->branch->plan_id,
-                    'modules' => $branchPlan?->modules ?? null,
+                    'modules' => $branchPlan?->resolvedModules() ?? null,
                 ] : null,
                 // Superadmin only: unread demo request count for notification badge.
                 'unread_demo_requests' => $user->isSuperAdmin()

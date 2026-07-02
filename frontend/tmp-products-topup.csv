@@ -1,0 +1,4 @@
+name,sku,category,price,unit,reorder_level,initial_stock,track_freshness,freshness_days,image_url
+Codex Topup 1,CDX-TOP-1781106220633-1,Supply,499,piece,4,8,false,1,
+Codex Topup 2,CDX-TOP-1781106220633-2,Supply,524,piece,5,9,false,1,
+Codex Topup 3,CDX-TOP-1781106220633-3,Supply,549,piece,6,10,false,1,

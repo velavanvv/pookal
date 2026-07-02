@@ -18,4 +18,20 @@ class Plan extends PlatformModel
     {
         return $this->hasMany(Subscription::class);
     }
+
+    public function resolvedModules(): array
+    {
+        $modules = $this->modules ?? [];
+
+        if (in_array('inventory', $modules, true) && ! in_array('products', $modules, true)) {
+            $modules[] = 'products';
+        }
+
+        return array_values(array_unique($modules));
+    }
+
+    public function isTrialPlan(): bool
+    {
+        return strcasecmp($this->name, 'Free Trial') === 0;
+    }
 }

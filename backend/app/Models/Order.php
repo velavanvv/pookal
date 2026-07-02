@@ -25,6 +25,11 @@ class Order extends TenantModel
         'recipient_name',
         'recipient_phone',
         'recipient_address',
+        'delivery_area',
+        'customer_latitude',
+        'customer_longitude',
+        'location_source',
+        'location_captured_at',
         'gift_message',
         'notes',
     ];

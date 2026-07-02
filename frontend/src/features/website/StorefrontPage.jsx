@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -22,6 +22,30 @@ const CAT_ICONS = {
 };
 const catIcon = (c) => CAT_ICONS[c] || '🌼';
 
+function scoreProduct(product) {
+  const stockScore = Math.min(product.stock || 0, 25) * 2;
+  const freshnessScore = product.freshness_days ? Math.max(0, 12 - product.freshness_days) * 5 : 10;
+  const priceScore = product.price <= 999 ? 18 : product.price <= 1499 ? 12 : 6;
+  const bouquetScore = /bouquet|arrangement|basket/i.test(product.category || '') ? 16 : 0;
+
+  return stockScore + freshnessScore + priceScore + bouquetScore;
+}
+
+function productEta(product) {
+  if ((product.stock || 0) >= 12) return '45-60 min';
+  if ((product.stock || 0) >= 6) return '90 min';
+  return 'Today';
+}
+
+function productMood(product) {
+  const haystack = `${product.name || ''} ${product.category || ''}`.toLowerCase();
+  if (/rose|red|love|romance/.test(haystack)) return 'Romantic';
+  if (/orchid|premium|lux|exotic/.test(haystack)) return 'Premium';
+  if (/sunflower|bright|yellow|gerbera/.test(haystack)) return 'Cheerful';
+  if (/white|lily|pastel/.test(haystack)) return 'Elegant';
+  return 'Best Seller';
+}
+
 export default function StorefrontPage() {
   const { slug } = useParams();
   const [store, setStore]       = useState(null);
@@ -34,8 +58,13 @@ export default function StorefrontPage() {
   const [showCart, setShowCart]         = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [activeCategory, setActiveCategory] = useState('All');
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState('recommended');
+  const [deliveryArea, setDeliveryArea] = useState('');
+  const [geo, setGeo] = useState({ status: 'idle', latitude: '', longitude: '' });
 
   const productsRef = useRef(null);
+  const deferredQuery = useDeferredValue(query);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
@@ -50,18 +79,92 @@ export default function StorefrontPage() {
       .finally(() => setLoading(false));
   }, [slug]);
 
+  const serviceAreas = store?.delivery_areas || [];
+  const areaCovered = useMemo(() => {
+    const area = deliveryArea.trim().toLowerCase();
+    if (!area || serviceAreas.length === 0) return null;
+    return serviceAreas.some((item) => {
+      const normalized = item.toLowerCase();
+      return area.includes(normalized) || normalized.includes(area);
+    });
+  }, [deliveryArea, serviceAreas]);
+
   const categories = useMemo(
     () => ['All', ...new Set(products.map(p => p.category).filter(Boolean))],
     [products],
   );
 
-  const filtered = useMemo(
-    () => activeCategory === 'All' ? products : products.filter(p => p.category === activeCategory),
-    [products, activeCategory],
-  );
+  const filtered = useMemo(() => {
+    let next = activeCategory === 'All' ? products : products.filter((product) => product.category === activeCategory);
+
+    const term = deferredQuery.trim().toLowerCase();
+    if (term) {
+      next = next.filter((product) => (`${product.name || ''} ${product.category || ''}`).toLowerCase().includes(term));
+    }
+
+    const sorted = [...next];
+    if (sortBy === 'price-low') sorted.sort((a, b) => Number(a.price) - Number(b.price));
+    else if (sortBy === 'price-high') sorted.sort((a, b) => Number(b.price) - Number(a.price));
+    else if (sortBy === 'fast-delivery') sorted.sort((a, b) => (b.stock || 0) - (a.stock || 0));
+    else sorted.sort((a, b) => scoreProduct(b) - scoreProduct(a));
+
+    return sorted;
+  }, [products, activeCategory, deferredQuery, sortBy]);
+
+  const smartShelves = useMemo(() => {
+    const inStock = products.filter((product) => product.stock > 0);
+    const ranked = [...inStock].sort((a, b) => scoreProduct(b) - scoreProduct(a));
+    const premium = [...inStock].sort((a, b) => Number(b.price) - Number(a.price));
+    const quick = [...inStock].sort((a, b) => {
+      const aScore = (a.stock || 0) + (a.freshness_days ? Math.max(0, 8 - a.freshness_days) : 4);
+      const bScore = (b.stock || 0) + (b.freshness_days ? Math.max(0, 8 - b.freshness_days) : 4);
+      return bScore - aScore;
+    });
+
+    return [
+      {
+        key: 'smart',
+        title: 'Most Likely To Convert',
+        subtitle: 'Our ranking boosts giftable, well-stocked, fast-fulfilment flowers first.',
+        badge: 'Smart order',
+        items: ranked.slice(0, 4),
+      },
+      {
+        key: 'express',
+        title: 'Fast Delivery Picks',
+        subtitle: 'High-availability flowers that are easiest to prepare and dispatch quickly.',
+        badge: 'Express',
+        items: quick.slice(0, 4),
+      },
+      {
+        key: 'premium',
+        title: 'Premium Gifting',
+        subtitle: 'Higher-value arrangements for birthdays, anniversaries, and big moments.',
+        badge: 'Signature',
+        items: premium.slice(0, 4),
+      },
+    ].filter((section) => section.items.length > 0);
+  }, [products]);
+
+  const categoryRail = categories.filter((item) => item !== 'All').slice(0, 8);
+  const promoShelves = smartShelves.slice(0, 2);
 
   const cartTotal = useMemo(() => cart.reduce((s, i) => s + i.qty * i.price, 0), [cart]);
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const freeDeliveryLeft = Math.max(0, 500 - cartTotal);
+  const crossSell = useMemo(() => {
+    if (cart.length === 0) return smartShelves[1]?.items?.slice(0, 3) ?? [];
+
+    const cartIds = new Set(cart.map((item) => item.product_id));
+    const sameCategory = products.filter((product) =>
+      !cartIds.has(product.id) && cart.some((item) => product.category === item.category)
+    );
+
+    const fallback = products.filter((product) => !cartIds.has(product.id));
+    return [...sameCategory, ...fallback]
+      .sort((a, b) => scoreProduct(b) - scoreProduct(a))
+      .slice(0, 3);
+  }, [cart, products, smartShelves]);
 
   function addToCart(product) {
     setCart(prev => {
@@ -72,7 +175,7 @@ export default function StorefrontPage() {
       }
       return [...prev, {
         product_id: product.id, name: product.name, price: product.price,
-        image_url: product.image_url, qty: 1, stock: product.stock,
+        image_url: product.image_url, qty: 1, stock: product.stock, category: product.category,
       }];
     });
   }
@@ -80,6 +183,26 @@ export default function StorefrontPage() {
   function updateCartQty(product_id, qty) {
     if (qty <= 0) setCart(prev => prev.filter(i => i.product_id !== product_id));
     else setCart(prev => prev.map(i => i.product_id === product_id ? { ...i, qty: Math.min(qty, i.stock) } : i));
+  }
+
+  function captureLocation() {
+    if (!navigator.geolocation) {
+      setGeo({ status: 'unsupported', latitude: '', longitude: '' });
+      return;
+    }
+
+    setGeo({ status: 'loading', latitude: '', longitude: '' });
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGeo({
+          status: 'ready',
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => setGeo({ status: 'error', latitude: '', longitude: '' }),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   }
 
   if (loading) return (
@@ -109,6 +232,14 @@ export default function StorefrontPage() {
             <div className="sf-topbar__logo"><i className="bi bi-flower3" /></div>
             <span>{store.name}</span>
           </div>
+          <div className="sf-topbar__search">
+            <i className="bi bi-search" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search bouquets, roses, orchids, garlands..."
+            />
+          </div>
           <div className="sf-topbar__actions">
             {store.phone && (
               <a href={`tel:${store.phone}`} className="sf-topbar__link">
@@ -124,81 +255,135 @@ export default function StorefrontPage() {
         </div>
       </nav>
 
-      {/* ── Hero ── */}
-      <header className="sf-hero">
-        <div className="sf-hero__bg" />
-        <div className="sf-hero__orb sf-hero__orb--1" />
-        <div className="sf-hero__orb sf-hero__orb--2" />
-        <div className="sf-hero__flowers" aria-hidden="true">
-          <span className="sf-hero__flower sf-hero__flower--1">🌹</span>
-          <span className="sf-hero__flower sf-hero__flower--2">🌸</span>
-          <span className="sf-hero__flower sf-hero__flower--3">💐</span>
-          <span className="sf-hero__flower sf-hero__flower--4">🌺</span>
-        </div>
-        <div className="sf-hero__content">
-          <div className="sf-hero__chips">
-            <span><i className="bi bi-lightning-charge-fill" />Same-day delivery</span>
-            <span><i className="bi bi-patch-check-fill" />Fresh from farm</span>
-            <span><i className="bi bi-gift-fill" />Gift message</span>
+      {categoryRail.length > 0 && (
+        <section className="sf-category-rail-wrap">
+          <div className="sf-category-rail">
+            {categoryRail.map((cat) => (
+              <button
+                key={cat}
+                className={`sf-category-tile ${activeCategory === cat ? 'sf-category-tile--active' : ''}`}
+                onClick={() => {
+                  setActiveCategory(cat);
+                  productsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              >
+                <div className="sf-category-tile__icon">{catIcon(cat)}</div>
+                <span>{cat}</span>
+              </button>
+            ))}
           </div>
-          <h1 className="sf-hero__title">{store.banner_title || store.name}</h1>
-          {store.banner_subtitle && <p className="sf-hero__sub">{store.banner_subtitle}</p>}
-          <div className="sf-hero__cta">
-            <button
-              className="sf-btn-hero"
-              onClick={() => productsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            >
-              Shop Now <i className="bi bi-arrow-down" />
-            </button>
-            {store.email && (
-              <a href={`mailto:${store.email}`} className="sf-btn-hero-ghost">
-                <i className="bi bi-envelope" /> Contact Us
-              </a>
-            )}
+        </section>
+      )}
+
+      <header className="sf-launchpad">
+        <div className="sf-launchpad__inner">
+          <div className="sf-launchpad__hero">
+            <div className="sf-launchpad__eyebrow">Fresh flowers in minutes</div>
+            <h1>{store.banner_title || store.name}</h1>
+            {store.banner_subtitle && <p>{store.banner_subtitle}</p>}
+            <div className="sf-launchpad__chips">
+              <span><i className="bi bi-lightning-charge-fill" />Same-day delivery</span>
+              <span><i className="bi bi-shield-check" />Freshness guaranteed</span>
+              <span><i className="bi bi-gift" />Gift wrapping</span>
+            </div>
+            <div className="sf-launchpad__actions">
+              <button
+                className="sf-btn-hero"
+                onClick={() => productsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              >
+                Shop Now <i className="bi bi-arrow-right" />
+              </button>
+              {store.email && (
+                <a href={`mailto:${store.email}`} className="sf-btn-hero-ghost">
+                  <i className="bi bi-envelope" /> Contact Us
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="sf-launchpad__promos">
+            {promoShelves.map((shelf, index) => (
+              <button
+                key={shelf.key}
+                className={`sf-launch-card sf-launch-card--${index + 1}`}
+                onClick={() => {
+                  setSortBy(shelf.key === 'express' ? 'fast-delivery' : 'recommended');
+                  productsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              >
+                <div className="sf-launch-card__badge">{shelf.badge}</div>
+                <h3>{shelf.title}</h3>
+                <p>{shelf.subtitle}</p>
+                <div className="sf-launch-card__items">
+                  {shelf.items.slice(0, 2).map((item) => (
+                    <div key={item.id} className="sf-launch-card__item">
+                      <div className="sf-launch-card__media">
+                        {item.image_url ? <img src={item.image_url} alt="" /> : <span>💐</span>}
+                      </div>
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span>Rs. {Number(item.price).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </button>
+            ))}
           </div>
         </div>
       </header>
 
-      {/* ── Trust strip ── */}
-      <div className="sf-trust-strip">
-        {[
-          { icon: 'bi-truck',         label: 'Free Delivery',         sub: 'On orders over ₹500'  },
-          { icon: 'bi-clock-history', label: 'Same Day Available',    sub: 'Order before 2 PM'    },
-          { icon: 'bi-shield-check',  label: 'Freshness Guaranteed',  sub: '100% fresh flowers'   },
-          { icon: 'bi-gift',          label: 'Gift Wrapping',         sub: 'Beautiful packaging'  },
-        ].map(({ icon, label, sub }) => (
-          <div key={label} className="sf-trust-item">
-            <div className="sf-trust-item__icon"><i className={`bi ${icon}`} /></div>
-            <div>
-              <div className="sf-trust-item__label">{label}</div>
-              <div className="sf-trust-item__sub">{sub}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
       {/* ── Products ── */}
       <main className="sf-products" ref={productsRef}>
         <div className="sf-products__inner">
-
-          {/* Category pills */}
-          <div className="sf-cats">
-            {categories.map(cat => (
-              <button
-                key={cat}
-                className={`sf-cat-pill ${activeCategory === cat ? 'sf-cat-pill--active' : ''}`}
-                onClick={() => setActiveCategory(cat)}
-              >
-                <span className="sf-cat-pill__emoji">{catIcon(cat)}</span>
-                {cat}
+          <section className="sf-location-card">
+            <div>
+              <div className="sf-location-card__title">Delivery location</div>
+              <div className="sf-location-card__sub">{store.location_prompt || 'Enter your area to confirm delivery coverage.'}</div>
+            </div>
+            <div className="sf-location-card__controls">
+              <input
+                className="sf-location-card__input"
+                value={deliveryArea}
+                onChange={(event) => setDeliveryArea(event.target.value)}
+                placeholder="Enter your area or locality"
+              />
+              <button type="button" className="sf-location-card__button" onClick={captureLocation}>
+                <i className="bi bi-crosshair" /> Use my location
               </button>
-            ))}
-          </div>
+            </div>
+            {serviceAreas.length > 0 && (
+              <div className="sf-location-card__areas">Delivering in: {serviceAreas.join(', ')}</div>
+            )}
+            {areaCovered !== null && (
+              <div className={`sf-location-card__status ${areaCovered ? 'sf-location-card__status--ok' : 'sf-location-card__status--warn'}`}>
+                {areaCovered ? 'Delivery is available in this area.' : 'This area is outside the listed delivery zones.'}
+              </div>
+            )}
+            {geo.status === 'ready' && (
+              <div className="sf-location-card__gps">
+                GPS captured: {Number(geo.latitude).toFixed(5)}, {Number(geo.longitude).toFixed(5)}
+              </div>
+            )}
+          </section>
 
-          {/* Store intro */}
-          {store.intro && activeCategory === 'All' && (
-            <p className="sf-intro">{store.intro}</p>
-          )}
+          <section className="sf-discovery">
+            <div className="sf-discovery__title">
+              <h3>All products</h3>
+              <span>{filtered.length} items available</span>
+            </div>
+            <div className="sf-discovery__right">
+              <div className="sf-sort">
+                <i className="bi bi-sliders2" />
+                <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                  <option value="recommended">Recommended</option>
+                  <option value="fast-delivery">Fast Delivery</option>
+                  <option value="price-low">Price: Low to High</option>
+                  <option value="price-high">Price: High to Low</option>
+                </select>
+              </div>
+            </div>
+          </section>
 
           {/* Grid */}
           {filtered.length === 0 ? (
@@ -250,7 +435,10 @@ export default function StorefrontPage() {
         <CartDrawer
           cart={cart}
           cartTotal={cartTotal}
+          freeDeliveryLeft={freeDeliveryLeft}
+          recommendations={crossSell}
           onUpdateQty={updateCartQty}
+          onAddRecommendation={addToCart}
           onClose={() => setShowCart(false)}
           onCheckout={() => { setShowCart(false); setShowCheckout(true); }}
         />
@@ -261,6 +449,9 @@ export default function StorefrontPage() {
           cart={cart}
           cartTotal={cartTotal}
           slug={slug}
+          store={store}
+          deliveryArea={deliveryArea}
+          geo={geo}
           onClose={() => setShowCheckout(false)}
           onSuccess={() => { setCart([]); setShowCheckout(false); }}
         />
@@ -290,11 +481,13 @@ export default function StorefrontPage() {
 }
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
-function ProductCard({ product, inCart, outOfStock, lowStock, onAdd, onUpdateQty }) {
+function ProductCard({ product, inCart, outOfStock, lowStock, onAdd, onUpdateQty, compact = false }) {
   const [imgErr, setImgErr] = useState(false);
+  const mood = productMood(product);
+  const eta = productEta(product);
 
   return (
-    <article className={`sf-card ${outOfStock ? 'sf-card--oos' : ''}`}>
+    <article className={`sf-card ${outOfStock ? 'sf-card--oos' : ''} ${compact ? 'sf-card--compact' : ''}`}>
       {lowStock && <div className="sf-card__ribbon">Only {product.stock} left</div>}
 
       <div className="sf-card__media">
@@ -314,6 +507,10 @@ function ProductCard({ product, inCart, outOfStock, lowStock, onAdd, onUpdateQty
       <div className="sf-card__body">
         {product.category && <div className="sf-card__cat">{product.category}</div>}
         <h3 className="sf-card__name">{product.name}</h3>
+        <div className="sf-card__meta">
+          <span>{mood}</span>
+          <span>{eta}</span>
+        </div>
         {product.description && <p className="sf-card__desc">{product.description}</p>}
 
         <div className="sf-card__footer">
@@ -342,7 +539,7 @@ function ProductCard({ product, inCart, outOfStock, lowStock, onAdd, onUpdateQty
 }
 
 // ─── Cart Drawer ──────────────────────────────────────────────────────────────
-function CartDrawer({ cart, cartTotal, onUpdateQty, onClose, onCheckout }) {
+function CartDrawer({ cart, cartTotal, freeDeliveryLeft, recommendations, onUpdateQty, onAddRecommendation, onClose, onCheckout }) {
   const cartCount  = cart.reduce((s, i) => s + i.qty, 0);
   const delivery   = cartTotal >= 500 ? 0 : 50;
   const orderTotal = cartTotal + delivery;
@@ -402,7 +599,28 @@ function CartDrawer({ cart, cartTotal, onUpdateQty, onClose, onCheckout }) {
                   <span><i className="bi bi-truck me-1" />Delivery</span>
                   <span style={{ color: '#16a34a', fontWeight: 600 }}>{delivery === 0 ? 'Free' : `Rs. ${delivery}`}</span>
                 </div>
+                <div className="sf-cart-summary__progress">
+                  {freeDeliveryLeft === 0
+                    ? 'Free delivery unlocked for this order.'
+                    : `Add Rs. ${freeDeliveryLeft.toLocaleString()} more to unlock free delivery.`}
+                </div>
               </div>
+              {recommendations?.length > 0 && (
+                <div className="sf-cart-cross">
+                  <div className="sf-cart-cross__title">Smart add-ons</div>
+                  <div className="sf-cart-cross__list">
+                    {recommendations.map((product) => (
+                      <button key={product.id} className="sf-cart-cross__item" onClick={() => onAddRecommendation(product)}>
+                        <div>
+                          <strong>{product.name}</strong>
+                          <span>{product.category || 'Floral pick'} · Rs. {Number(product.price).toLocaleString()}</span>
+                        </div>
+                        <i className="bi bi-plus-circle" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -425,9 +643,10 @@ function CartDrawer({ cart, cartTotal, onUpdateQty, onClose, onCheckout }) {
 }
 
 // ─── Checkout Modal ───────────────────────────────────────────────────────────
-function CheckoutModal({ cart, cartTotal, slug, onClose, onSuccess }) {
+function CheckoutModal({ cart, cartTotal, slug, store, deliveryArea, geo, onClose, onSuccess }) {
   const [form, setForm] = useState({
     recipient_name: '', recipient_phone: '', recipient_address: '',
+    delivery_area: deliveryArea || '',
     delivery_date: TODAY, delivery_time_slot: TIME_SLOTS[0], gift_message: '',
   });
   const [step, setStep]         = useState('form');
@@ -446,6 +665,9 @@ function CheckoutModal({ cart, cartTotal, slug, onClose, onSuccess }) {
     try {
       const { data } = await api.post(`/storefront/${slug}/order`, {
         ...form,
+        customer_latitude: geo.latitude || null,
+        customer_longitude: geo.longitude || null,
+        location_source: geo.status === 'ready' ? 'browser' : 'manual',
         items: cart.map(i => ({ product_id: i.product_id, qty: i.qty })),
       });
       setOrderNum(data.order_number || '');
@@ -544,6 +766,15 @@ function CheckoutModal({ cart, cartTotal, slug, onClose, onSuccess }) {
                         required
                       />
                     </div>
+                  </div>
+                  <div className="sf-field">
+                    <label>Delivery Area</label>
+                    <input
+                      className="sf-input"
+                      value={form.delivery_area}
+                      onChange={e => set('delivery_area', e.target.value)}
+                      placeholder={store?.location_prompt || 'Enter your area'}
+                    />
                   </div>
                   <div className="sf-field">
                     <label>Delivery Address *</label>

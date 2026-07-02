@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../services/api';
 
 function stockStatus(stock, reorder) {
@@ -110,6 +111,9 @@ export default function InventoryPage() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
+          <Link className="pk-btn pk-btn--outline" to="/products">
+            <i className="bi bi-box2-heart" /> Manage Products
+          </Link>
           <button className="pk-btn pk-btn--rose" onClick={() => setShowReceive(true)}>
             <i className="bi bi-plus-lg" /> Receive Stock
           </button>

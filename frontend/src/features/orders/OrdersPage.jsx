@@ -132,6 +132,16 @@ export default function OrdersPage() {
                             {o.recipient_address}
                           </div>
                         )}
+                        {o.delivery_area && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--c-blue)', marginTop: 2 }}>
+                            <i className="bi bi-geo-alt me-1" />{o.delivery_area}
+                          </div>
+                        )}
+                        {o.customer_latitude && o.customer_longitude && (
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 2 }}>
+                            GPS: {Number(o.customer_latitude).toFixed(5)}, {Number(o.customer_longitude).toFixed(5)}
+                          </div>
+                        )}
                         {o.gift_message && (
                           <div style={{ fontSize: '0.75rem', color: 'var(--c-green)', marginTop: 2 }}>
                             <i className="bi bi-gift me-1" />"{o.gift_message}"
@@ -185,6 +195,11 @@ export default function OrdersPage() {
                     {o.recipient_address && (
                       <div className="order-card__addr">
                         <i className="bi bi-geo-alt" /> {o.recipient_address}
+                      </div>
+                    )}
+                    {o.delivery_area && (
+                      <div className="order-card__addr">
+                        <i className="bi bi-geo" /> {o.delivery_area}
                       </div>
                     )}
                     {o.gift_message && (
