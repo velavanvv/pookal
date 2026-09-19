@@ -16,16 +16,28 @@ use App\Http\Controllers\Api\DemoController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StorefrontController;
 use App\Http\Controllers\Api\WebsiteConfigController;
+use App\Http\Controllers\Api\VoiceController;
 use App\Http\Middleware\ResolveTenantContext;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'Pookal']));
+Route::get('/shop-types', [AuthController::class, 'shopTypes']);
+
+// ── Native Tamil Voice Agent (Vela - வேலா) & AI Voice Tool Endpoints ──────
+Route::prefix('voice')->group(function () {
+    Route::get('/token',             [VoiceController::class, 'token']);
+    Route::get('/tools/search',      [VoiceController::class, 'search']);
+    Route::post('/tools/cart',       [VoiceController::class, 'cart']);
+    Route::post('/tools/order',      [VoiceController::class, 'order']);
+});
+
+// ── Public Pookal Floral E-Commerce Catalog ────────────────────────────────
+Route::get('/flowers', [VoiceController::class, 'catalog']);
 
 // Public — sales demo request (no login required)
 Route::post('/demo/request', [DemoController::class, 'store']);
 
 Route::prefix('auth')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
 });
 
@@ -56,6 +68,7 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
     });
 
     Route::prefix('orders')->group(function () {
+        Route::get('/latest-alert', [OrderController::class, 'latestAlert']);
         Route::get('/', [OrderController::class, 'index']);
         Route::post('/', [OrderController::class, 'store']);
         Route::patch('/{order}', [OrderController::class, 'update']);
@@ -64,10 +77,12 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
     Route::prefix('crm')->group(function () {
         Route::get('/customers', [CrmController::class, 'customers']);
         Route::post('/customers', [CrmController::class, 'storeCustomer']);
+        Route::put('/customers/{customer}', [CrmController::class, 'updateCustomer']);
+        Route::post('/customers/{customer}/points', [CrmController::class, 'adjustPoints']);
         Route::get('/campaigns', [CrmController::class, 'campaigns']);
     });
 
-    Route::prefix('delivery')->group(function () {
+    Route::prefix('delivery')->middleware('capability:delivery')->group(function () {
         Route::get('/board', [DeliveryController::class, 'board']);
         Route::post('/dispatch', [DeliveryController::class, 'dispatch']);
     });
@@ -80,9 +95,16 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
     Route::prefix('settings')->group(function () {
         Route::get('/', [SettingsController::class, 'index']);
         Route::post('/', [SettingsController::class, 'update']);
+        Route::get('/profile', [SettingsController::class, 'profile']);
+        Route::put('/profile', [SettingsController::class, 'updateProfile']);
+        Route::post('/profile', [SettingsController::class, 'updateProfile']);
     });
 
-    Route::prefix('website-config')->group(function () {
+    // ── Self-service subscription (for expired/suspended users) ─────────────
+    Route::get('/plans/public', [AdminController::class, 'listPublicPlans']);
+    Route::post('/subscription/renewal-request', [AdminController::class, 'renewalRequest']);
+
+    Route::prefix('website-config')->middleware('capability:website')->group(function () {
         Route::get('/', [WebsiteConfigController::class, 'index']);
         Route::post('/', [WebsiteConfigController::class, 'update']);
     });
@@ -91,15 +113,35 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
         Route::patch('/products/{product}', [CatalogController::class, 'update']);
     });
 
-    // ── Vendor / Farmer management ─────────────────────────────────────────
-    Route::prefix('vendor')->group(function () {
+    // ── Restaurant management (tables, KOT, modifiers) ───────────────────────
+    Route::prefix('restaurant')->middleware('capability:restaurant')->group(function () {
+        Route::get('/stats',                             [\App\Http\Controllers\Api\RestaurantController::class, 'stats']);
+
+        Route::get('/tables',                            [\App\Http\Controllers\Api\RestaurantController::class, 'listTables']);
+        Route::post('/tables',                           [\App\Http\Controllers\Api\RestaurantController::class, 'storeTable']);
+        Route::patch('/tables/{table}',                  [\App\Http\Controllers\Api\RestaurantController::class, 'updateTable']);
+        Route::patch('/tables/{table}/status',           [\App\Http\Controllers\Api\RestaurantController::class, 'updateTableStatus']);
+        Route::delete('/tables/{table}',                 [\App\Http\Controllers\Api\RestaurantController::class, 'destroyTable']);
+
+        Route::get('/kots',                              [\App\Http\Controllers\Api\RestaurantController::class, 'listKitchenTickets']);
+        Route::post('/kots',                             [\App\Http\Controllers\Api\RestaurantController::class, 'storeKitchenTicket']);
+        Route::patch('/kots/{ticket}/status',            [\App\Http\Controllers\Api\RestaurantController::class, 'updateTicketStatus']);
+
+        Route::get('/modifiers',                         [\App\Http\Controllers\Api\RestaurantController::class, 'listModifiers']);
+        Route::post('/modifiers',                        [\App\Http\Controllers\Api\RestaurantController::class, 'storeModifier']);
+        Route::patch('/modifiers/{modifier}',            [\App\Http\Controllers\Api\RestaurantController::class, 'updateModifier']);
+        Route::delete('/modifiers/{modifier}',           [\App\Http\Controllers\Api\RestaurantController::class, 'destroyModifier']);
+    });
+
+    // ── Supplier management (fresh/perishable shops) ─────────────────────────
+    $supplierRoutes = function () {
         Route::get('/stats',                               [VendorController::class, 'stats']);
 
-        Route::get('/farmers',                             [VendorController::class, 'listFarmers']);
-        Route::post('/farmers',                            [VendorController::class, 'storeFarmer']);
-        Route::patch('/farmers/{farmer}',                  [VendorController::class, 'updateFarmer']);
-        Route::delete('/farmers/{farmer}',                 [VendorController::class, 'deleteFarmer']);
-        Route::post('/farmers/import',                     [VendorController::class, 'importFarmers']);
+        Route::get('/suppliers',                           [VendorController::class, 'listFarmers']);
+        Route::post('/suppliers',                          [VendorController::class, 'storeFarmer']);
+        Route::patch('/suppliers/{farmer}',                [VendorController::class, 'updateFarmer']);
+        Route::delete('/suppliers/{farmer}',               [VendorController::class, 'deleteFarmer']);
+        Route::post('/suppliers/import',                   [VendorController::class, 'importFarmers']);
 
         Route::get('/deliveries',                          [VendorController::class, 'listDeliveries']);
         Route::post('/deliveries',                         [VendorController::class, 'storeDelivery']);
@@ -118,7 +160,35 @@ Route::middleware(['auth:sanctum', ResolveTenantContext::class])->group(function
         Route::post('/sales',                              [VendorController::class, 'storeSale']);
         Route::patch('/sales/{sale}/status',               [VendorController::class, 'updateSaleStatus']);
         Route::delete('/sales/{sale}',                     [VendorController::class, 'deleteSale']);
+    };
+
+    Route::prefix('suppliers')->middleware('capability:suppliers')->group($supplierRoutes);
+
+    // Legacy vendor routes (backward compatibility)
+    Route::prefix('vendor')->middleware('capability:suppliers')->group(function () {
+        Route::get('/stats',                               [VendorController::class, 'stats']);
+        Route::get('/farmers',                             [VendorController::class, 'listFarmers']);
+        Route::post('/farmers',                            [VendorController::class, 'storeFarmer']);
+        Route::patch('/farmers/{farmer}',                  [VendorController::class, 'updateFarmer']);
+        Route::delete('/farmers/{farmer}',                 [VendorController::class, 'deleteFarmer']);
+        Route::post('/farmers/import',                     [VendorController::class, 'importFarmers']);
+        Route::get('/deliveries',                          [VendorController::class, 'listDeliveries']);
+        Route::post('/deliveries',                         [VendorController::class, 'storeDelivery']);
+        Route::delete('/deliveries/{delivery}',            [VendorController::class, 'deleteDelivery']);
+        Route::get('/payments',                            [VendorController::class, 'listPayments']);
+        Route::post('/payments/generate',                  [VendorController::class, 'generatePayment']);
+        Route::patch('/payments/{payment}/mark-paid',      [VendorController::class, 'markPaymentPaid']);
+        Route::get('/buyers',                              [VendorController::class, 'listBuyers']);
+        Route::post('/buyers',                             [VendorController::class, 'storeBuyer']);
+        Route::patch('/buyers/{buyer}',                    [VendorController::class, 'updateBuyer']);
+        Route::delete('/buyers/{buyer}',                   [VendorController::class, 'deleteBuyer']);
+        Route::get('/sales',                               [VendorController::class, 'listSales']);
+        Route::post('/sales',                              [VendorController::class, 'storeSale']);
+        Route::patch('/sales/{sale}/status',               [VendorController::class, 'updateSaleStatus']);
+        Route::delete('/sales/{sale}',                     [VendorController::class, 'deleteSale']);
     });
+
+    // ── Deprecated vendor block removed ─────────────────────────────────────
 
     // ── Branch routes (write: superadmin only; read: any auth user) ───────
     Route::prefix('branches')->group(function () {

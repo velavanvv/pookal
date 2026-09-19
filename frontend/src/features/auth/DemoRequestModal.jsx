@@ -2,9 +2,9 @@ import { useState } from 'react';
 import api from '../../services/api';
 
 const FIELDS = [
-  { name: 'name',          label: 'Your Name',        type: 'text',  placeholder: 'Rajan Florist',        required: true  },
-  { name: 'business_name', label: 'Business Name',    type: 'text',  placeholder: 'Pookal Flowers',       required: true  },
-  { name: 'email',         label: 'Email Address',    type: 'email', placeholder: 'rajan@flowers.in',     required: true  },
+  { name: 'name',          label: 'Your Name',        type: 'text',  placeholder: 'Shop owner name',      required: true  },
+  { name: 'business_name', label: 'Business Name',    type: 'text',  placeholder: 'My Store',             required: true  },
+  { name: 'email',         label: 'Email Address',    type: 'email', placeholder: 'owner@shop.com',       required: true  },
   { name: 'phone',         label: 'Phone / WhatsApp', type: 'tel',   placeholder: '+91 98765 43210',      required: false },
   { name: 'city',          label: 'City',             type: 'text',  placeholder: 'Chennai',              required: false },
   { name: 'message',       label: 'Anything to share?', type: 'textarea', placeholder: 'We run 2 outlets and want to manage orders and delivery…', required: false },

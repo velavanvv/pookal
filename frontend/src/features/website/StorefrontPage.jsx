@@ -14,40 +14,47 @@ const TIME_SLOTS = [
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
-const CAT_ICONS = {
-  'All': '✨', 'Roses': '🌹', 'Rose': '🌹', 'Bouquets': '💐',
-  'Bouquet': '💐', 'Seasonal': '🌸', 'Exotic': '🌺', 'White': '🤍',
-  'Orchids': '🌷', 'Orchid': '🌷', 'Sunflowers': '🌻', 'Sunflower': '🌻',
-  'Lilies': '🌸', 'Lily': '🌸', 'Mixed': '💐',
-};
-const catIcon = (c) => CAT_ICONS[c] || '🌼';
+function catIcon(cat = '') {
+  if (cat === 'All') return '✨';
+  const c = cat.toLowerCase();
+  if (c.includes('flower') || c.includes('rose') || c.includes('pooja') || c.includes('garland')) return '🌸';
+  if (c.includes('fruit') || c.includes('apple') || c.includes('banana')) return '🍎';
+  if (c.includes('veg') || c.includes('onion') || c.includes('potato') || c.includes('tomato')) return '🥦';
+  if (c.includes('dairy') || c.includes('milk') || c.includes('curd') || c.includes('paneer') || c.includes('butter')) return '🥛';
+  if (c.includes('snack') || c.includes('biscuit') || c.includes('chip') || c.includes('namkeen')) return '🍪';
+  if (c.includes('drink') || c.includes('juice') || c.includes('beverage') || c.includes('tea') || c.includes('coffee')) return '🥤';
+  if (c.includes('food') || c.includes('meal') || c.includes('rice') || c.includes('dal') || c.includes('grain')) return '🌾';
+  if (c.includes('oil') || c.includes('ghee') || c.includes('masala') || c.includes('spice')) return '🧂';
+  if (c.includes('meat') || c.includes('chicken') || c.includes('fish') || c.includes('egg')) return '🍗';
+  if (c.includes('clean') || c.includes('wash') || c.includes('soap') || c.includes('detergent')) return '🧼';
+  if (c.includes('sweet') || c.includes('cake') || c.includes('bakery') || c.includes('bread')) return '🍞';
+  if (c.includes('stationery') || c.includes('pen') || c.includes('book')) return '📚';
+  if (c.includes('electronics') || c.includes('battery') || c.includes('cable')) return '⚡';
+  return '📦';
+}
 
 function scoreProduct(product) {
-  const stockScore = Math.min(product.stock || 0, 25) * 2;
-  const freshnessScore = product.freshness_days ? Math.max(0, 12 - product.freshness_days) * 5 : 10;
-  const priceScore = product.price <= 999 ? 18 : product.price <= 1499 ? 12 : 6;
-  const bouquetScore = /bouquet|arrangement|basket/i.test(product.category || '') ? 16 : 0;
-
-  return stockScore + freshnessScore + priceScore + bouquetScore;
+  const stockScore = Math.min(product.stock || 0, 50) * 2;
+  const priceScore = product.price <= 99 ? 20 : product.price <= 499 ? 15 : 10;
+  return stockScore + priceScore;
 }
 
 function productEta(product) {
-  if ((product.stock || 0) >= 12) return '45-60 min';
-  if ((product.stock || 0) >= 6) return '90 min';
-  return 'Today';
+  if ((product.stock || 0) >= 10) return 'Express 30-45 min';
+  if ((product.stock || 0) >= 1) return 'Same Day Delivery';
+  return 'Order for Tomorrow';
 }
 
 function productMood(product) {
-  const haystack = `${product.name || ''} ${product.category || ''}`.toLowerCase();
-  if (/rose|red|love|romance/.test(haystack)) return 'Romantic';
-  if (/orchid|premium|lux|exotic/.test(haystack)) return 'Premium';
-  if (/sunflower|bright|yellow|gerbera/.test(haystack)) return 'Cheerful';
-  if (/white|lily|pastel/.test(haystack)) return 'Elegant';
+  if ((product.stock || 0) > 15) return 'In Stock';
+  if (product.price <= 99) return 'Budget Buy';
+  if (product.price >= 500) return 'Premium Pick';
   return 'Best Seller';
 }
 
 export default function StorefrontPage() {
-  const { slug } = useParams();
+  const params = useParams();
+  const slug = params.slug || 'murugan';
   const [store, setStore]       = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -125,14 +132,14 @@ export default function StorefrontPage() {
       {
         key: 'smart',
         title: 'Most Likely To Convert',
-        subtitle: 'Our ranking boosts giftable, well-stocked, fast-fulfilment flowers first.',
+        subtitle: 'Our ranking boosts well-stocked, fast-fulfilment products first.',
         badge: 'Smart order',
         items: ranked.slice(0, 4),
       },
       {
         key: 'express',
         title: 'Fast Delivery Picks',
-        subtitle: 'High-availability flowers that are easiest to prepare and dispatch quickly.',
+        subtitle: 'High-availability items that are easiest to prepare and dispatch quickly.',
         badge: 'Express',
         items: quick.slice(0, 4),
       },
@@ -207,14 +214,14 @@ export default function StorefrontPage() {
 
   if (loading) return (
     <div className="sf-splash">
-      <div className="sf-splash__bloom"><i className="bi bi-flower3" /></div>
+      <div className="sf-splash__bloom"><i className="bi bi-shop" /></div>
       <p>Loading storefront…</p>
     </div>
   );
 
   if (error || !store) return (
     <div className="sf-error-screen">
-      <i className="bi bi-flower1" />
+      <i className="bi bi-shop" />
       <h4>Storefront Unavailable</h4>
       <p>{error || 'This store link is no longer active.'}</p>
     </div>
@@ -229,7 +236,7 @@ export default function StorefrontPage() {
       <nav className={`sf-topbar ${scrolled ? 'sf-topbar--scrolled' : ''}`}>
         <div className="sf-topbar__inner">
           <div className="sf-topbar__brand">
-            <div className="sf-topbar__logo"><i className="bi bi-flower3" /></div>
+            <div className="sf-topbar__logo"><i className="bi bi-shop" /></div>
             <span>{store.name}</span>
           </div>
           <div className="sf-topbar__search">
@@ -237,7 +244,7 @@ export default function StorefrontPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search bouquets, roses, orchids, garlands..."
+              placeholder="Search products, catalog, items..."
             />
           </div>
           <div className="sf-topbar__actions">
@@ -278,12 +285,12 @@ export default function StorefrontPage() {
       <header className="sf-launchpad">
         <div className="sf-launchpad__inner">
           <div className="sf-launchpad__hero">
-            <div className="sf-launchpad__eyebrow">Fresh flowers in minutes</div>
+            <div className="sf-launchpad__eyebrow">Order online in minutes</div>
             <h1>{store.banner_title || store.name}</h1>
             {store.banner_subtitle && <p>{store.banner_subtitle}</p>}
             <div className="sf-launchpad__chips">
               <span><i className="bi bi-lightning-charge-fill" />Same-day delivery</span>
-              <span><i className="bi bi-shield-check" />Freshness guaranteed</span>
+              <span><i className="bi bi-shield-check" />Quality guaranteed</span>
               <span><i className="bi bi-gift" />Gift wrapping</span>
             </div>
             <div className="sf-launchpad__actions">
@@ -389,7 +396,7 @@ export default function StorefrontPage() {
           {filtered.length === 0 ? (
             <div className="sf-empty">
               <div className="sf-empty__icon">🌱</div>
-              <h5>No flowers in this category yet</h5>
+              <h5>No products in this category yet</h5>
               <p>Fresh stock arrives daily — check back soon.</p>
             </div>
           ) : (
@@ -461,10 +468,10 @@ export default function StorefrontPage() {
       <footer className="sf-footer">
         <div className="sf-footer__inner">
           <div className="sf-footer__brand">
-            <div className="sf-footer__logo"><i className="bi bi-flower3" /></div>
+            <div className="sf-footer__logo"><i className="bi bi-shop" /></div>
             <div>
               <div className="sf-footer__name">{store.name}</div>
-              <div className="sf-footer__tagline">Fresh flowers, delivered with love</div>
+              <div className="sf-footer__tagline">Shop online, delivered with care</div>
             </div>
           </div>
           <div className="sf-footer__contact">
@@ -472,7 +479,7 @@ export default function StorefrontPage() {
             {store.email && <a href={`mailto:${store.email}`}><i className="bi bi-envelope-fill" />{store.email}</a>}
           </div>
           <div className="sf-footer__powered">
-            Powered by <strong>Pookal</strong>
+            Powered by <strong>Universal Business Platform (UBP)</strong>
           </div>
         </div>
       </footer>
@@ -562,7 +569,7 @@ function CartDrawer({ cart, cartTotal, freeDeliveryLeft, recommendations, onUpda
             <div className="sf-drawer__empty">
               <div className="sf-drawer__empty-icon">🛍️</div>
               <h6>Your bag is empty</h6>
-              <p>Add some beautiful flowers to get started.</p>
+              <p>Add products to get started.</p>
             </div>
           ) : (
             <>
@@ -571,7 +578,7 @@ function CartDrawer({ cart, cartTotal, freeDeliveryLeft, recommendations, onUpda
                   <div className="sf-cart-item__media">
                     {item.image_url
                       ? <img src={item.image_url} alt={item.name} />
-                      : <span>🌸</span>}
+                      : <span>📦</span>}
                   </div>
                   <div className="sf-cart-item__info">
                     <div className="sf-cart-item__name">{item.name}</div>
@@ -691,11 +698,11 @@ function CheckoutModal({ cart, cartTotal, slug, store, deliveryArea, geo, onClos
       <div className="sf-modal">
         {step === 'success' ? (
           <div className="sf-success">
-            <div className="sf-success__flowers">🌹 🌸 💐 🌺</div>
+            <div className="sf-success__flowers">✓</div>
             <div className="sf-success__icon"><i className="bi bi-check-lg" /></div>
             <h3>Order Placed!</h3>
             {orderNum && <div className="sf-success__order">Order #{orderNum}</div>}
-            <p>Thank you! Your flowers are being prepared. The florist will confirm your delivery shortly.</p>
+            <p>Thank you! Your order is being prepared. The shop will confirm shortly.</p>
             <button className="sf-btn-primary-solid" onClick={onSuccess}>Continue Shopping</button>
           </div>
         ) : (
@@ -752,7 +759,7 @@ function CheckoutModal({ cart, cartTotal, slug, store, deliveryArea, geo, onClos
                         className={`sf-input ${errors.recipient_name ? 'sf-input--error' : ''}`}
                         value={form.recipient_name}
                         onChange={e => set('recipient_name', e.target.value)}
-                        placeholder="Who receives the flowers?"
+                        placeholder="Who receives this order?"
                         required
                       />
                     </div>
@@ -834,16 +841,48 @@ function CheckoutModal({ cart, cartTotal, slug, store, deliveryArea, geo, onClos
               </div>
             </div>
 
-            <div className="sf-modal__footer">
+            <div className="sf-modal__footer" style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap', justifyContent: 'space-between' }}>
               <button type="button" className="sf-modal__back" onClick={onClose}>
                 <i className="bi bi-arrow-left" /> Back
               </button>
-              <button className="sf-modal__place" onClick={handleSubmit} disabled={saving}>
-                {saving
-                  ? <span className="spinner-border spinner-border-sm" />
-                  : <i className="bi bi-bag-check" />}
-                Place Order · Rs. {orderTotal.toLocaleString()}
-              </button>
+              
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  style={{
+                    background: '#25d366', color: '#fff', border: 'none',
+                    borderRadius: '9999px', padding: '0.65rem 1.25rem',
+                    fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    boxShadow: '0 2px 8px rgba(37,211,102,0.3)'
+                  }}
+                  onClick={() => {
+                    const shopPhone = (store?.phone || '919876543210').replace(/[^\d]/g, '');
+                    const itemsSummary = cart.map(i => `• ${i.name} x ${i.quantity} = Rs. ${i.price * i.quantity}`).join('\n');
+                    const msg = `🛒 *New Order from ${store?.name || 'Online Store'}*\n` +
+                      `👤 Customer: ${form.recipient_name || 'Customer'}\n` +
+                      `📞 Phone: ${form.recipient_phone || '—'}\n` +
+                      `📍 Address: ${form.recipient_address || form.delivery_area || 'Standard Delivery'}\n` +
+                      `📅 Date: ${form.delivery_date} (${form.delivery_time_slot})\n` +
+                      `--------------------------------\n` +
+                      itemsSummary + `\n` +
+                      `--------------------------------\n` +
+                      `💰 *Total Payable: Rs. ${orderTotal.toLocaleString()}*\n` +
+                      `Payment Preference: UPI / Cash on Delivery`;
+                    window.open(`https://wa.me/${shopPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+                    handleSubmit();
+                  }}
+                >
+                  <i className="bi bi-whatsapp" /> 1-Click WhatsApp Order
+                </button>
+
+                <button className="sf-modal__place" onClick={handleSubmit} disabled={saving}>
+                  {saving
+                    ? <span className="spinner-border spinner-border-sm" />
+                    : <i className="bi bi-bag-check" />}
+                  Place Order · Rs. {orderTotal.toLocaleString()}
+                </button>
+              </div>
             </div>
           </>
         )}

@@ -21,9 +21,11 @@ const DEFAULTS = {
 };
 
 const THEMES = [
-  { v: 'rose-luxury',     label: 'Rose Luxury',    primary: '#7d294a', secondary: '#25543a', preview: ['#7d294a','#e8c9d5','#25543a'] },
-  { v: 'gold-garden',     label: 'Gold Garden',    primary: '#92400e', secondary: '#166534', preview: ['#92400e','#fef3c7','#166534'] },
-  { v: 'green-botanical', label: 'Botanical',      primary: '#14532d', secondary: '#1e3a5f', preview: ['#14532d','#dcfce7','#1e3a5f'] },
+  { v: 'retail-blue',     label: 'Retail & Supermarket', primary: '#0284c7', secondary: '#0f172a', preview: ['#0284c7','#e0f2fe','#0f172a'] },
+  { v: 'modern-slate',    label: 'Modern Minimalist',    primary: '#334155', secondary: '#6366f1', preview: ['#334155','#f1f5f9','#6366f1'] },
+  { v: 'restaurant-amber', label: 'Restaurant & Dining',  primary: '#ea580c', secondary: '#78350f', preview: ['#ea580c','#ffedd5','#78350f'] },
+  { v: 'emerald-fresh',   label: 'Grocery & Organic',    primary: '#059669', secondary: '#064e3b', preview: ['#059669','#dcfce7','#064e3b'] },
+  { v: 'rose-luxury',     label: 'Fresh & Floral',       primary: '#be185d', secondary: '#15803d', preview: ['#be185d','#fce7f3','#15803d'] },
 ];
 
 export default function WebsiteConfigPage() {
@@ -91,10 +93,11 @@ export default function WebsiteConfigPage() {
   );
 
   const sections = [
-    { key: 'identity',  label: 'Identity',  icon: 'bi-shop' },
-    { key: 'branding',  label: 'Branding',  icon: 'bi-palette' },
-    { key: 'content',   label: 'Content',   icon: 'bi-text-left' },
-    { key: 'contact',   label: 'Contact',   icon: 'bi-telephone' },
+    { key: 'identity',  label: 'Identity & Theme', icon: 'bi-shop' },
+    { key: 'branding',  label: 'Branding',         icon: 'bi-palette' },
+    { key: 'content',   label: 'Content',          icon: 'bi-text-left' },
+    { key: 'commerce',  label: 'Orders & Money',    icon: 'bi-cash-coin' },
+    { key: 'contact',   label: 'Contact & Delivery', icon: 'bi-geo-alt' },
   ];
 
   return (
@@ -111,7 +114,7 @@ export default function WebsiteConfigPage() {
       <div className="wc-header">
         <div>
           <h4 className="wc-header__title">Website Config</h4>
-          <p className="wc-header__sub">Set up and customise your public flower storefront</p>
+          <p className="wc-header__sub">Set up and customise your public storefront</p>
         </div>
         <button className="wc-save-btn" onClick={handleSave} disabled={saving}>
           {saving ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-cloud-arrow-up" />}
@@ -130,7 +133,7 @@ export default function WebsiteConfigPage() {
             <div className="wc-enable-banner__sub">
               {form.website_enabled
                 ? 'Customers can browse and order from your public store URL.'
-                : 'Enable to publish your public flower store page.'}
+                : 'Enable to publish your public store page.'}
             </div>
           </div>
         </div>
@@ -284,7 +287,7 @@ export default function WebsiteConfigPage() {
               <div className="wc-card__body">
                 <div className="wc-field">
                   <label>Hero title</label>
-                  <input className="wc-input" value={form.website_banner_title || ''} onChange={e => setField('website_banner_title', e.target.value)} placeholder="e.g. Send flowers from Pookal" />
+                  <input className="wc-input" value={form.website_banner_title || ''} onChange={e => setField('website_banner_title', e.target.value)} placeholder="e.g. Shop online from our store" />
                   <span className="wc-field-hint">{(form.website_banner_title || '').length} / 120 characters</span>
                 </div>
                 <div className="wc-field">
@@ -294,6 +297,85 @@ export default function WebsiteConfigPage() {
                 <div className="wc-field">
                   <label>Store introduction</label>
                   <textarea className="wc-input wc-textarea" rows={4} value={form.website_intro || ''} onChange={e => setField('website_intro', e.target.value)} placeholder="Tell your customers about your shop, what makes you special…" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Commerce & Monetization ── */}
+          {activeSection === 'commerce' && (
+            <div className="wc-card">
+              <div className="wc-card__head">
+                <i className="bi bi-cash-coin wc-card__icon" />
+                <div>
+                  <div className="wc-card__title">Ordering &amp; Revenue Settings</div>
+                  <div className="wc-card__sub">Direct WhatsApp orders, UPI payments, and delivery charges</div>
+                </div>
+              </div>
+              <div className="wc-card__body">
+                <div className="wc-field">
+                  <label>WhatsApp Orders Phone Number</label>
+                  <div className="wc-input-with-icon">
+                    <i className="bi bi-whatsapp text-success" />
+                    <input
+                      className="wc-input"
+                      value={form.website_whatsapp_phone || ''}
+                      onChange={e => setField('website_whatsapp_phone', e.target.value)}
+                      placeholder="+91 98765 43210"
+                    />
+                  </div>
+                  <span className="wc-field-hint">Customers can send structured order summaries directly to this WhatsApp number</span>
+                </div>
+
+                <div className="wc-field">
+                  <label>Shop UPI ID (for instant QR code payments)</label>
+                  <div className="wc-input-with-icon">
+                    <i className="bi bi-qr-code" />
+                    <input
+                      className="wc-input"
+                      value={form.website_upi_id || ''}
+                      onChange={e => setField('website_upi_id', e.target.value)}
+                      placeholder="merchant@okhdfcbank"
+                    />
+                  </div>
+                  <span className="wc-field-hint">Generates automatic UPI payment QR codes on storefront checkout</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="wc-field">
+                    <label>Free Delivery Threshold (Rs.)</label>
+                    <input
+                      type="number"
+                      className="wc-input"
+                      value={form.website_free_delivery_threshold || '499'}
+                      onChange={e => setField('website_free_delivery_threshold', e.target.value)}
+                      placeholder="499"
+                    />
+                    <span className="wc-field-hint">Orders above this amount get free delivery</span>
+                  </div>
+
+                  <div className="wc-field">
+                    <label>Standard Delivery Fee (Rs.)</label>
+                    <input
+                      type="number"
+                      className="wc-input"
+                      value={form.website_delivery_fee || '40'}
+                      onChange={e => setField('website_delivery_fee', e.target.value)}
+                      placeholder="40"
+                    />
+                    <span className="wc-field-hint">Applied to orders below threshold</span>
+                  </div>
+                </div>
+
+                <div className="wc-field">
+                  <label>Storefront Promo Announcement Banner</label>
+                  <input
+                    className="wc-input"
+                    value={form.website_promo_banner || ''}
+                    onChange={e => setField('website_promo_banner', e.target.value)}
+                    placeholder="🎉 Flat 10% OFF on all orders this weekend! Use code SAVE10"
+                  />
+                  <span className="wc-field-hint">Displayed prominently at the top of your public online storefront</span>
                 </div>
               </div>
             </div>
@@ -321,7 +403,7 @@ export default function WebsiteConfigPage() {
                   <label>Contact email</label>
                   <div className="wc-input-with-icon">
                     <i className="bi bi-envelope" />
-                    <input type="email" className="wc-input" value={form.website_contact_email || ''} onChange={e => setField('website_contact_email', e.target.value)} placeholder="flowers@yourshop.com" />
+                    <input type="email" className="wc-input" value={form.website_contact_email || ''} onChange={e => setField('website_contact_email', e.target.value)} placeholder="hello@yourshop.com" />
                   </div>
                 </div>
                 <div className="wc-field">

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import QRCode from 'qrcode';
 import api from '../../services/api';
 
-const ALL_MODULES = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
+const ALL_MODULES = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'suppliers', 'settings', 'website'];
 
 const STATUS_BADGE = {
   active:    'pk-badge--success',
@@ -11,6 +11,14 @@ const STATUS_BADGE = {
   cancelled: 'pk-badge--gray',
   suspended: 'pk-badge--warning',
 };
+
+const SHOP_TYPES = [
+  { key: 'retail', label: 'Retail / Supermarket', description: 'General store, supermarket, stationery, gifts' },
+  { key: 'fresh_perishable', label: 'Fresh / Perishable', description: 'Flower, fish, chicken, fruits & vegetables' },
+  { key: 'restaurant', label: 'Restaurant / Café', description: 'Dine-in, takeaway, cloud kitchen' },
+  { key: 'service', label: 'Service Business', description: 'Salon, repair shop, clinic, laundry' },
+  { key: 'hybrid', label: 'Hybrid / Multi-category', description: 'Retail + delivery + mixed products' },
+];
 
 const DAYS_WARN = 30;
 const MODULE_LABELS = {
@@ -21,7 +29,7 @@ const MODULE_LABELS = {
   crm: 'CRM',
   delivery: 'Delivery',
   reports: 'Reports',
-  vendor: 'Vendor',
+  suppliers: 'Suppliers',
   settings: 'Settings',
   website: 'Website',
 };
@@ -29,7 +37,7 @@ const MODULE_LABELS = {
 function formatPlanPrice(plan, cycle) {
   if (!plan) return '—';
   if (cycle === 'trial' || plan.name === 'Free Trial') return 'Free';
-  const amount = cycle === 'yearly' ? plan.price_yearly : plan.price_monthly;
+  const amount = plan.amount_paid;
   return `Rs. ${Number(amount).toLocaleString()}`;
 }
 
@@ -55,6 +63,12 @@ export default function AdminPage() {
   const [subs, setSubs]       = useState([]);
   const [demoRequests, setDemoRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Search & Filter State (Google Admin Standard)
+  const [searchQuery, setSearchQuery]       = useState('');
+  const [tenantFilter, setTenantFilter]     = useState('all');
+  const [verticalFilter, setVerticalFilter] = useState('all');
+  const [initialDemoData, setInitialDemoData] = useState(null);
 
   const [showNewCustomer, setShowNewCustomer]   = useState(false);
   const [showNewPlan, setShowNewPlan]           = useState(false);
@@ -82,10 +96,56 @@ export default function AdminPage() {
 
   useEffect(() => { fetchAll(); }, []);
 
+  // Filtered lists for real-time Google-style command search
+  const filteredTenants = useMemo(() => {
+    let list = tenants;
+    if (tenantFilter === 'active') list = list.filter(t => t.subscription?.status === 'active');
+    else if (tenantFilter === 'trial') list = list.filter(t => t.subscription?.status === 'trial');
+    else if (tenantFilter === 'expiring') list = list.filter(t => (t.subscription?.days_left ?? 999) <= DAYS_WARN && t.subscription?.status === 'active');
+    else if (tenantFilter === 'expired') list = list.filter(t => t.subscription?.status === 'expired');
+
+    if (verticalFilter !== 'all') {
+      list = list.filter(t => (t.shop_profile?.business_type || 'retail') === verticalFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(t =>
+        (t.name || '').toLowerCase().includes(q) ||
+        (t.email || '').toLowerCase().includes(q) ||
+        (t.shop_name || '').toLowerCase().includes(q) ||
+        (t.phone || '').includes(q) ||
+        (t.subscription?.plan_name || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [tenants, tenantFilter, verticalFilter, searchQuery]);
+
+  const filteredSubs = useMemo(() => {
+    if (!searchQuery.trim()) return subs;
+    const q = searchQuery.toLowerCase();
+    return subs.filter(s =>
+      (s.user_name || '').toLowerCase().includes(q) ||
+      (s.shop_name || '').toLowerCase().includes(q) ||
+      (s.user_email || '').toLowerCase().includes(q) ||
+      (s.plan_name || '').toLowerCase().includes(q)
+    );
+  }, [subs, searchQuery]);
+
+  const filteredPlans = useMemo(() => {
+    if (!searchQuery.trim()) return plans;
+    const q = searchQuery.toLowerCase();
+    return plans.filter(p =>
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.description || '').toLowerCase().includes(q) ||
+      (p.modules || []).some(m => m.toLowerCase().includes(q))
+    );
+  }, [plans, searchQuery]);
+
   if (loading && !stats) return (
     <div className="pk-loading">
       <div className="spinner-border" style={{ color: 'var(--pookal-rose)', width: '1.5rem', height: '1.5rem' }} />
-      <span>Loading admin…</span>
+      <span>Loading Google Admin Control Plane…</span>
     </div>
   );
 
@@ -96,144 +156,311 @@ export default function AdminPage() {
     { label: 'Expired',          value: stats.expired_subs,    icon: 'bi-x-circle-fill',     tint: '#fee2e2', color: '#dc2626' },
   ] : [];
 
+  const newDemoCount = demoRequests.filter(r => r.status === 'new').length;
+
   return (
-    <div>
-      <div className="pg-header">
+    <div style={{ maxWidth: '1360px', margin: '0 auto', paddingBottom: '3rem' }}>
+      
+      {/* ── GOOGLE ADMIN TOP CONSOLE HEADER & SEARCH ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h4 className="pg-title">Platform Admin</h4>
-          <p className="pg-sub">Manage customers, plans, and subscriptions</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 38, height: 38, borderRadius: '10px', background: 'linear-gradient(135deg, #0f172a, #1e293b)', color: '#38bdf8', display: 'grid', placeItems: 'center', fontSize: '1.15rem' }}>
+              <i className="bi bi-shield-check" />
+            </div>
+            <div>
+              <h4 style={{ margin: 0, fontWeight: 800, fontSize: '1.35rem', color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                Platform Superadmin Console
+                <span style={{ fontSize: '0.68rem', fontWeight: 800, background: '#ede9fe', color: '#6d28d9', padding: '0.15rem 0.55rem', borderRadius: '6px', border: '1px solid #ddd6fe' }}>
+                  Google SaaS Standard
+                </span>
+              </h4>
+              <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                Multi-tenant cloud orchestration, pricing tiers, recurring ARR/MRR metrics, and automated provisioning.
+              </p>
+            </div>
+          </div>
         </div>
-        <button className="pk-btn pk-btn--outline" onClick={fetchAll}>
-          <i className="bi bi-arrow-clockwise" />Refresh
-        </button>
+
+        <div style={{ display: 'flex', gap: '0.65rem' }}>
+          <button
+            type="button"
+            className="pk-btn pk-btn--primary"
+            onClick={() => { setInitialDemoData(null); setShowNewCustomer(true); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, borderRadius: '8px' }}
+          >
+            <i className="bi bi-shop" /> Create Shop
+          </button>
+          <button
+            type="button"
+            className="pk-btn pk-btn--outline"
+            onClick={() => { setSelectedPlan(null); setShowNewPlan(true); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, borderRadius: '8px' }}
+          >
+            <i className="bi bi-plus-circle" /> New Plan
+          </button>
+        </div>
       </div>
 
-      {/* KPI strip */}
-      {stats && (
-        <div className="pk-kpi-row">
-          {kpis.map((k) => (
-            <div key={k.label} className="pk-kpi">
-              <div className="pk-kpi__icon" style={{ background: k.tint, color: k.color }}>
-                <i className={`bi ${k.icon}`} />
-              </div>
-              <div>
-                <div className="pk-kpi__val">{k.value}</div>
-                <div className="pk-kpi__lbl">{k.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* ── GOOGLE ADMIN COMMAND FILTER SEARCH BAR ── */}
+      <div style={{ background: '#fff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+        <i className="bi bi-search" style={{ color: '#94a3b8', fontSize: '1.05rem' }} />
+        <input
+          type="text"
+          placeholder="Search tenants, shop names, customer emails, phone numbers, plans, or subscription status..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.86rem', color: '#0f172a' }}
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1.1rem' }}
+          >
+            <i className="bi bi-x-circle-fill" />
+          </button>
+        )}
+      </div>
 
-      {/* Revenue strip */}
+      {/* ── HERO METRIC SERVICE TILES (Google Admin Dashboard Cards) ── */}
       {stats && (
-        <div className="pk-card" style={{ marginBottom: '1.25rem' }}>
-          <div className="pk-card__body">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', textAlign: 'center' }}>
-              <div style={{ borderRight: '1.5px solid var(--border)', paddingRight: '1rem' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-2)', marginBottom: '0.25rem' }}>Monthly Revenue (MRR)</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#16a34a' }}>Rs. {Number(stats.mrr).toLocaleString()}</div>
+        <div className="pk-kpi-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+          {/* Card 1: Shops & Tenants */}
+          <div className="google-admin-hero-card" style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#dbeafe', color: '#2563eb', display: 'grid', placeItems: 'center', fontSize: '1.25rem' }}>
+                <i className="bi bi-buildings-fill" />
               </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-2)', marginBottom: '0.25rem' }}>Yearly Revenue (ARR)</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#2563eb' }}>Rs. {Number(stats.arr).toLocaleString()}</div>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#16a34a', background: '#dcfce7', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                {stats.active_subs} Active
+              </span>
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+              {stats.total_customers}
+            </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginTop: '0.25rem' }}>Total Shops Registered</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.4rem' }}>
+              {stats.expiring_soon} expiring in 30 days · {stats.expired_subs} expired
+            </div>
+          </div>
+
+          {/* Card 2: ARR / MRR Recurring Revenue */}
+          <div className="google-admin-hero-card" style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#dcfce7', color: '#16a34a', display: 'grid', placeItems: 'center', fontSize: '1.25rem' }}>
+                <i className="bi bi-graph-up-arrow" />
               </div>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0284c7', background: '#e0f2fe', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                ARR Healthy
+              </span>
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#16a34a', lineHeight: 1.1 }}>
+              Rs. {Number(stats.arr).toLocaleString()}
+            </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginTop: '0.25rem' }}>Annual Recurring Revenue</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.4rem' }}>
+              Monthly Run-Rate: <strong>Rs. {Number(stats.mrr).toLocaleString()}</strong>
+            </div>
+          </div>
+
+          {/* Card 3: Licensing & Plans */}
+          <div className="google-admin-hero-card" style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#ede9fe', color: '#7c3aed', display: 'grid', placeItems: 'center', fontSize: '1.25rem' }}>
+                <i className="bi bi-box-seam-fill" />
+              </div>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#7c3aed', background: '#ede9fe', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                SaaS Tiers
+              </span>
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+              {plans.length}
+            </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginTop: '0.25rem' }}>Active Product Plans</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.4rem' }}>
+              Full feature matrix &amp; module licensing
+            </div>
+          </div>
+
+          {/* Card 4: Inbound Demo Leads */}
+          <div className="google-admin-hero-card" style={{ background: '#fff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+              <div style={{ width: 42, height: 42, borderRadius: '10px', background: '#fee2e2', color: '#dc2626', display: 'grid', placeItems: 'center', fontSize: '1.25rem' }}>
+                <i className="bi bi-send-fill" />
+              </div>
+              {newDemoCount > 0 ? (
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#fff', background: '#dc2626', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                  {newDemoCount} New Inquiries
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                  Up to Date
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+              {demoRequests.length}
+            </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginTop: '0.25rem' }}>Inbound Sales Leads</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.4rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.4rem' }}>
+              1-click provision demo leads to live shops
             </div>
           </div>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="pk-tabs admin-tabs" style={{ flexWrap: 'wrap' }}>
+      {/* ── GOOGLE-STYLE TABS ── */}
+      <div className="pk-tabs admin-tabs" style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid #e2e8f0', marginBottom: '1.25rem' }}>
         {[
-          { key: 'customers',     label: 'Customers',     icon: 'bi-people'          },
-          { key: 'subscriptions', label: 'Subscriptions', icon: 'bi-calendar2-check' },
-          { key: 'plans',         label: 'Plans',         icon: 'bi-box'             },
-          { key: 'demo',          label: 'Demo Requests', icon: 'bi-send',
-            badge: demoRequests.filter(r => r.status === 'new').length },
+          { key: 'customers',     label: 'Customers',     icon: 'bi-people', count: filteredTenants.length },
+          { key: 'subscriptions', label: 'Subscriptions', icon: 'bi-calendar2-check', count: filteredSubs.length },
+          { key: 'plans',         label: 'Plans',         icon: 'bi-box', count: filteredPlans.length },
+          { key: 'demo',          label: 'Demo Requests', icon: 'bi-send', count: demoRequests.length, badge: newDemoCount },
         ].map((t) => (
-          <button key={t.key} className={`pk-tab ${tab === t.key ? 'pk-tab--active' : ''}`} onClick={() => setTab(t.key)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <i className={`bi ${t.icon}`} />{t.label}
+          <button
+            key={t.key}
+            className={`pk-tab ${tab === t.key ? 'pk-tab--active' : ''}`}
+            onClick={() => setTab(t.key)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.45rem',
+              padding: '0.65rem 1.15rem', fontSize: '0.82rem', fontWeight: 700,
+              border: 'none', background: 'none', cursor: 'pointer',
+              borderBottom: tab === t.key ? '2.5px solid #0284c7' : '2.5px solid transparent',
+              color: tab === t.key ? '#0284c7' : '#64748b',
+            }}
+          >
+            <i className={`bi ${t.icon}`} />
+            <span>{t.label}</span>
+            <span style={{ fontSize: '0.68rem', padding: '0.1rem 0.45rem', borderRadius: '999px', background: tab === t.key ? '#e0f2fe' : '#f1f5f9', color: tab === t.key ? '#0284c7' : '#64748b', fontWeight: 800 }}>
+              {t.count}
+            </span>
             {t.badge > 0 && (
-              <span style={{ background: 'var(--pookal-rose)', color: '#fff', fontSize: '0.62rem', fontWeight: 700,
-                borderRadius: '999px', padding: '0.1em 0.45em', lineHeight: 1.5 }}>
-                {t.badge}
+              <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.65rem', fontWeight: 800, borderRadius: '999px', padding: '0.1rem 0.45rem' }}>
+                {t.badge} new
               </span>
             )}
           </button>
         ))}
       </div>
 
-      {/* ── CUSTOMERS TAB ── */}
+      {/* ── TAB 1: CUSTOMERS / TENANTS TAB ── */}
       {tab === 'customers' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-            <button className="pk-btn pk-btn--dark" onClick={() => setShowNewCustomer(true)}>
-              <i className="bi bi-person-plus" />Add Customer
-            </button>
+        <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          {/* Sub-Filters Toolbar */}
+          <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: '#fafafa' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', marginRight: '0.35rem' }}>Status:</span>
+              {[
+                { k: 'all', label: 'All Shops' },
+                { k: 'active', label: 'Active' },
+                { k: 'trial', label: 'Free Trial' },
+                { k: 'expiring', label: 'Expiring (30d)' },
+                { k: 'expired', label: 'Expired' },
+              ].map(f => (
+                <button
+                  key={f.k}
+                  onClick={() => setTenantFilter(f.k)}
+                  style={{
+                    padding: '0.25rem 0.65rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700,
+                    border: '1px solid', cursor: 'pointer',
+                    borderColor: tenantFilter === f.k ? '#0284c7' : '#e2e8f0',
+                    background: tenantFilter === f.k ? '#0284c7' : '#fff',
+                    color: tenantFilter === f.k ? '#fff' : '#475569',
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>Vertical:</span>
+              <select
+                value={verticalFilter}
+                onChange={e => setVerticalFilter(e.target.value)}
+                style={{ padding: '0.25rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: 600, background: '#fff' }}
+              >
+                <option value="all">All Verticals</option>
+                <option value="retail">Retail &amp; Supermarket</option>
+                <option value="fresh_perishable">Fresh &amp; Floral</option>
+                <option value="restaurant">Restaurant &amp; Café</option>
+                <option value="hybrid">Multi-category Store</option>
+              </select>
+            </div>
           </div>
-          <div className="pk-card">
-            <table className="pk-table">
+
+          {/* Tenants Table */}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="pk-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Shop</th>
-                  <th>Plan</th>
-                  <th>Status</th>
-                  <th>Expires</th>
-                  <th>Days Left</th>
-                  <th>Modules</th>
-                  <th>Website</th>
-                  <th></th>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <th style={{ padding: '0.75rem 1.25rem' }}>Customer</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Shop &amp; Vertical</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Subscription Plan</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Status</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Renewal / Days</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Modules</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Storefront</th>
+                  <th style={{ padding: '0.75rem 1.25rem', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {tenants.map((t) => {
+                {filteredTenants.map((t) => {
                   const sub       = t.subscription;
                   const daysLeft  = sub?.days_left ?? null;
                   const isWarning = daysLeft !== null && daysLeft <= DAYS_WARN && sub?.status === 'active';
+                  const bType     = t.shop_profile?.business_type || 'retail';
                   return (
-                    <tr key={t.id} style={isWarning ? { background: '#fef9c3' } : {}}>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{t.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>{t.email}</div>
+                    <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9', background: isWarning ? '#fffbeb' : undefined }}>
+                      <td style={{ padding: '0.85rem 1.25rem' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.85rem' }}>{t.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{t.email}</div>
                       </td>
-                      <td>
-                        <div>{t.shop_name || '—'}</div>
-                        {t.phone && <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>{t.phone}</div>}
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.85rem' }}>{t.shop_name || '—'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '2px' }}>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0284c7', background: '#e0f2fe', padding: '0.1rem 0.45rem', borderRadius: '4px', textTransform: 'capitalize' }}>
+                            {bType.replace('_', ' ')}
+                          </span>
+                          {t.phone && <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{t.phone}</span>}
+                        </div>
                       </td>
-                      <td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
                         {sub ? (
-                          <div className="admin-plan-cell">
-                            <div className="admin-plan-cell__name">{sub.plan_name}</div>
-                            <div className="admin-plan-cell__meta">
+                          <div>
+                            <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.82rem' }}>{sub.plan_name}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
                               {sub.modules?.length || 0} modules · {formatPlanPrice(sub, sub.billing_cycle)} / {sub.billing_cycle}
                             </div>
                           </div>
-                        ) : <span style={{ color: 'var(--text-3)' }}>No plan</span>}
+                        ) : <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>No active plan</span>}
                       </td>
-                      <td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
                         {sub ? (
-                          <span className={`pk-badge ${STATUS_BADGE[sub.status] || 'pk-badge--gray'}`}>{sub.status}</span>
-                        ) : <span style={{ color: 'var(--text-3)' }}>—</span>}
-                      </td>
-                      <td style={{ fontSize: '0.82rem' }}>{sub?.end_date || '—'}</td>
-                      <td>
-                        {daysLeft !== null ? (
-                          <span style={{ fontWeight: 700, color: daysLeft <= 7 ? '#dc2626' : daysLeft <= DAYS_WARN ? '#d97706' : '#16a34a' }}>
-                            {daysLeft}d
+                          <span className={`pk-badge ${STATUS_BADGE[sub.status] || 'pk-badge--gray'}`} style={{ textTransform: 'capitalize', fontWeight: 700 }}>
+                            {sub.status}
                           </span>
-                        ) : '—'}
+                        ) : <span style={{ color: '#94a3b8' }}>—</span>}
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ fontSize: '0.78rem', color: '#0f172a', fontWeight: 600 }}>{sub?.end_date || '—'}</div>
+                        {daysLeft !== null && (
+                          <span style={{ fontWeight: 800, fontSize: '0.75rem', color: daysLeft <= 7 ? '#dc2626' : daysLeft <= DAYS_WARN ? '#d97706' : '#16a34a' }}>
+                            {daysLeft}d left
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', maxWidth: '200px' }}>
                           {(sub?.modules || []).map((m) => (
-                            <span key={m} className="pk-badge pk-badge--gray" style={{ fontSize: '0.68rem' }}>{m}</span>
+                            <span key={m} style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.4rem', borderRadius: '4px' }}>
+                              {m}
+                            </span>
                           ))}
                         </div>
                       </td>
-                      <td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <label className="admin-toggle">
                             <input
@@ -247,14 +474,20 @@ export default function AdminPage() {
                             <span className="admin-toggle__track" />
                           </label>
                           {t.website_enabled && (
-                            <button className="pk-btn pk-btn--sm pk-btn--outline" onClick={() => { setSelectedTenant(t); setShowWebsite(true); }}>
-                              <i className="bi bi-globe2" />
-                            </button>
+                            <a
+                              href={`/store/${t.website_slug || t.shop_name || 'store'}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: '#0284c7', fontSize: '0.9rem' }}
+                              title="Open live storefront"
+                            >
+                              <i className="bi bi-box-arrow-up-right" />
+                            </a>
                           )}
                         </div>
                       </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '0.35rem' }}>
+                      <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '0.35rem' }}>
                           <button className="pk-btn pk-btn--sm pk-btn--outline" style={{ color: '#16a34a', borderColor: '#86efac' }} title="Renew / Change Plan"
                             onClick={() => { setSelectedTenant(t); setShowRenew(true); }}>
                             <i className="bi bi-rocket-takeoff" />
@@ -284,8 +517,13 @@ export default function AdminPage() {
                     </tr>
                   );
                 })}
-                {tenants.length === 0 && (
-                  <tr className="pk-table__empty"><td colSpan={9}>No customers yet.</td></tr>
+                {filteredTenants.length === 0 && (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                      <i className="bi bi-shop" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem', color: '#cbd5e1' }} />
+                      No shops found matching your search.
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -293,118 +531,190 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* ── SUBSCRIPTIONS TAB ── */}
+      {/* ── TAB 2: SUBSCRIPTIONS & ARR HUB ── */}
       {tab === 'subscriptions' && (
-        <div className="pk-card">
-          <table className="pk-table">
-            <thead>
-              <tr>
-                <th>Customer</th>
-                <th>Plan</th>
-                <th>Cycle</th>
-                <th>Amount Paid</th>
-                <th>Start</th>
-                <th>End / Renewal</th>
-                <th>Days Left</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subs.map((s) => {
-                const isWarning = s.days_left <= DAYS_WARN && s.status === 'active';
-                return (
-                  <tr key={s.id} style={isWarning ? { background: '#fef9c3' } : {}}>
-                    <td>
-                      <div style={{ fontWeight: 600 }}>{s.user_name}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>{s.shop_name || s.user_email}</div>
-                    </td>
-                    <td>{s.plan_name}</td>
-                    <td style={{ textTransform: 'capitalize' }}>{s.billing_cycle}</td>
-                    <td>Rs. {Number(s.amount_paid).toLocaleString()}</td>
-                    <td style={{ fontSize: '0.82rem' }}>{s.start_date}</td>
-                    <td style={{ fontSize: '0.82rem', fontWeight: 600 }}>{s.end_date}</td>
-                    <td>
-                      <span style={{ fontWeight: 700, color: s.days_left <= 7 ? '#dc2626' : s.days_left <= DAYS_WARN ? '#d97706' : '#16a34a' }}>
-                        {s.days_left}d
-                      </span>
-                    </td>
-                    <td><span className={`pk-badge ${STATUS_BADGE[s.status] || 'pk-badge--gray'}`}>{s.status}</span></td>
-                  </tr>
-                );
-              })}
-              {subs.length === 0 && (
-                <tr className="pk-table__empty"><td colSpan={8}>No subscriptions yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+        <div style={{ background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a' }}>
+              Active Subscription Ledger ({filteredSubs.length} total)
+            </span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="pk-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <th style={{ padding: '0.75rem 1.25rem' }}>Tenant Customer</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Plan Tier</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Cycle</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Recurring Amount</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Start Date</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Renewal Due</th>
+                  <th style={{ padding: '0.75rem 1rem' }}>Days Left</th>
+                  <th style={{ padding: '0.75rem 1.25rem', textAlign: 'right' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSubs.map((s) => {
+                  const isWarning = s.days_left <= DAYS_WARN && s.status === 'active';
+                  return (
+                    <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: isWarning ? '#fffbeb' : undefined }}>
+                      <td style={{ padding: '0.85rem 1.25rem' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.85rem' }}>{s.user_name}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{s.shop_name || s.user_email}</div>
+                      </td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 700, color: '#0f172a' }}>{s.plan_name}</td>
+                      <td style={{ padding: '0.85rem 1rem', textTransform: 'capitalize', fontSize: '0.8rem' }}>{s.billing_cycle}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontWeight: 800, color: '#16a34a' }}>Rs. {Number(s.amount_paid).toLocaleString()}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', color: '#64748b' }}>{s.start_date}</td>
+                      <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>{s.end_date}</td>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <span style={{ fontWeight: 800, color: s.days_left <= 7 ? '#dc2626' : s.days_left <= DAYS_WARN ? '#d97706' : '#16a34a' }}>
+                          {s.days_left}d
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.85rem 1.25rem', textAlign: 'right' }}>
+                        <span className={`pk-badge ${STATUS_BADGE[s.status] || 'pk-badge--gray'}`}>{s.status}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredSubs.length === 0 && (
+                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>No subscriptions found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* ── PLANS TAB ── */}
+      {/* ── TAB 3: PRODUCT PLANS & LICENSING (Google Workspace Style) ── */}
       {tab === 'plans' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-            <button className="pk-btn pk-btn--dark" onClick={() => { setSelectedPlan(null); setShowNewPlan(true); }}>
-              <i className="bi bi-plus-lg" />New Plan
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+            <div>
+              <h5 style={{ margin: 0, fontWeight: 800, color: '#0f172a' }}>Licensing Tiers &amp; Capabilities</h5>
+              <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+                Manage pricing tiers, staff limits, and active module allocations.
+              </p>
+            </div>
+            <button
+              className="pk-btn pk-btn--primary"
+              onClick={() => { setSelectedPlan(null); setShowNewPlan(true); }}
+              style={{ fontWeight: 700 }}
+            >
+              <i className="bi bi-plus-lg" /> Create New Plan
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.25rem' }}>
-            {plans.map((plan) => (
-              <div key={plan.id} className="pk-card" style={{ opacity: plan.is_active ? 1 : 0.5 }}>
-                <div className="pk-card__head">
-                  <div style={{ fontWeight: 700 }}>{plan.name}</div>
-                  {!plan.is_active && <span className="pk-badge pk-badge--gray" style={{ marginLeft: 'auto' }}>Inactive</span>}
-                </div>
-                <div className="pk-card__body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-2)', margin: 0 }}>{plan.description}</p>
-                  <div style={{ fontSize: '0.82rem' }}>
-                    <span style={{ color: 'var(--text-2)' }}>Monthly: </span>
-                    <strong>Rs. {Number(plan.price_monthly).toLocaleString()}</strong>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+            {filteredPlans.map((plan) => {
+              const isPro = plan.name.toLowerCase().includes('pro') || plan.name.toLowerCase().includes('enterprise');
+              return (
+                <div
+                  key={plan.id}
+                  className="google-plan-card"
+                  style={{
+                    background: '#fff', borderRadius: '16px', border: `1.5px solid ${isPro ? '#0284c7' : '#e2e8f0'}`,
+                    padding: '1.5rem', display: 'flex', flexDirection: 'column',
+                    position: 'relative', boxShadow: isPro ? '0 8px 24px rgba(2,132,199,0.1)' : '0 1px 3px rgba(0,0,0,0.02)'
+                  }}
+                >
+                  {isPro && (
+                    <span style={{ position: 'absolute', top: '-11px', right: '1.25rem', background: '#0284c7', color: '#fff', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', padding: '0.15rem 0.55rem', borderRadius: '999px', letterSpacing: '0.04em' }}>
+                      Popular Choice
+                    </span>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h5 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '1.1rem' }}>{plan.name}</h5>
+                    {!plan.is_active && (
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, background: '#f1f5f9', color: '#64748b', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                        Inactive
+                      </span>
+                    )}
                   </div>
-                  <div style={{ fontSize: '0.82rem' }}>
-                    <span style={{ color: 'var(--text-2)' }}>Yearly: </span>
-                    <strong>Rs. {Number(plan.price_yearly).toLocaleString()}</strong>
+
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', minHeight: '38px', margin: '0 0 1rem 0', lineHeight: 1.4 }}>
+                    {plan.description || 'Full platform capabilities for growing enterprises.'}
+                  </p>
+
+                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', marginBottom: '1.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
+                      <span style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a' }}>
+                        Rs. {Number(plan.price_monthly).toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>/ month</span>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#0284c7', fontWeight: 700, marginTop: '0.2rem' }}>
+                      Rs. {Number(plan.price_yearly).toLocaleString()} / year (Save on Annual)
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
-                    {(plan.modules || []).map((m) => (
-                      <span key={m} className="pk-badge pk-badge--success" style={{ fontSize: '0.7rem' }}>{m}</span>
-                    ))}
+
+                  <div style={{ flex: 1, marginBottom: '1.25rem' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginBottom: '0.5rem', letterSpacing: '0.04em' }}>
+                      Included Modules:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {(plan.modules || []).map((m) => (
+                        <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', color: '#334155' }}>
+                          <i className="bi bi-check-circle-fill" style={{ color: '#16a34a', fontSize: '0.85rem' }} />
+                          <span style={{ textTransform: 'capitalize', fontWeight: 600 }}>{m}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-2)' }}>Max users: {plan.max_users}</div>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
-                    <button className="pk-btn pk-btn--outline" style={{ flex: 1, justifyContent: 'center' }} onClick={() => { setSelectedPlan(plan); setShowEditPlan(true); }}>
-                      <i className="bi bi-pencil" />Edit
+
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: '0.65rem', marginBottom: '1rem' }}>
+                    <i className="bi bi-person-badge me-1" />Max Staff Users: <strong>{plan.max_users || 1}</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="pk-btn pk-btn--outline"
+                      style={{ flex: 1, justifyContent: 'center', fontWeight: 700 }}
+                      onClick={() => { setSelectedPlan(plan); setShowEditPlan(true); }}
+                    >
+                      <i className="bi bi-pencil" /> Edit
                     </button>
-                    <button className="pk-btn pk-btn--outline" style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                    <button
+                      className="pk-btn pk-btn--outline"
+                      style={{ color: '#dc2626', borderColor: '#fecaca', padding: '0.4rem 0.75rem' }}
                       onClick={async () => {
                         if (!confirm(`Delete plan "${plan.name}"?`)) return;
                         try { await api.delete(`/admin/plans/${plan.id}`); fetchAll(); }
                         catch (e) { alert(e?.response?.data?.message || 'Cannot delete.'); }
-                      }}>
+                      }}
+                    >
                       <i className="bi bi-trash3" />
                     </button>
                   </div>
                 </div>
-              </div>
-            ))}
-            {plans.length === 0 && (
-              <div className="pk-empty" style={{ gridColumn: '1 / -1' }}>
-                <i className="bi bi-box" />
-                <p>No plans yet. Create one to get started.</p>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* ── DEMO REQUESTS TAB ── */}
+      {/* ── TAB 4: DEMO REQUESTS & 1-CLICK PROVISIONING ── */}
       {tab === 'demo' && (
-        <DemoRequestsPanel requests={demoRequests} onRefresh={fetchAll} />
+        <DemoRequestsPanel
+          requests={demoRequests}
+          onRefresh={fetchAll}
+          onConvert={(lead) => {
+            setInitialDemoData(lead);
+            setShowNewCustomer(true);
+          }}
+        />
       )}
 
       {/* ── MODALS ── */}
       {showNewCustomer && (
-        <CustomerModal plans={plans} onClose={() => setShowNewCustomer(false)} onSaved={() => { setShowNewCustomer(false); fetchAll(); }} />
+        <CustomerModal
+          plans={plans}
+          initialData={initialDemoData}
+          onClose={() => { setShowNewCustomer(false); setInitialDemoData(null); }}
+          onSaved={() => { setShowNewCustomer(false); setInitialDemoData(null); fetchAll(); }}
+        />
       )}
       {showRenew && selectedTenant && (
         <RenewModal tenant={selectedTenant} plans={plans}
@@ -431,14 +741,22 @@ export default function AdminPage() {
 }
 
 // ── CustomerModal — creates a new main shop (with subscription) ──
-function CustomerModal({ plans, onClose, onSaved }) {
+function CustomerModal({ plans, initialData = null, onClose, onSaved }) {
   const [form, setForm] = useState({
-    name: '', email: '', password: '', shop_name: '', phone: '',
-    role: 'admin', plan_id: '', billing_cycle: 'yearly',
-    start_date: new Date().toISOString().slice(0, 10), notes: '',
+    name: initialData?.name || '',
+    email: initialData?.email || '',
+    password: '',
+    shop_name: initialData?.business_name || '',
+    phone: initialData?.phone || '',
+    business_type: 'retail',
+    plan_id: '',
+    billing_cycle: 'yearly',
+    start_date: new Date().toISOString().slice(0, 10),
+    notes: initialData ? `Lead #${initialData.id}: ${initialData.message || 'Demo request conversion'}` : '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState(null);
+  const [created, setCreated] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const selectedPlan = plans.find((p) => String(p.id) === String(form.plan_id));
   const isTrialPlan = selectedPlan?.name === 'Free Trial';
@@ -450,12 +768,43 @@ function CustomerModal({ plans, onClose, onSaved }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setSaving(true); setError(null);
     try {
-      await api.post('/admin/tenants', { ...form, billing_cycle: effectiveCycle }); onSaved();
+      await api.post('/admin/tenants', {
+        ...form,
+        role: 'admin',
+        billing_cycle: effectiveCycle,
+      });
+      setCreated({
+        email: form.email,
+        password: form.password,
+        shop_name: form.shop_name || form.name,
+        plan: selectedPlan?.name,
+        modules: selectedPlan?.modules || [],
+      });
     } catch (err) {
       const errs = err?.response?.data?.errors;
       setError(errs ? Object.values(errs).flat().join(' ') : 'Failed to create shop.');
     } finally { setSaving(false); }
   };
+
+  if (created) {
+    return (
+      <PkModal title="Shop created" onClose={() => onSaved()}>
+        <div className="pk-modal__body">
+          <p style={{ marginBottom: '1rem' }}>Give these login details to the shop owner. They can use only the modules in their plan.</p>
+          <div style={{ background: '#f4f4f5', borderRadius: 'var(--radius-md)', padding: '0.875rem 1rem', fontSize: '0.88rem' }}>
+            <div><strong>Shop:</strong> {created.shop_name}</div>
+            <div><strong>Email:</strong> {created.email}</div>
+            <div><strong>Password:</strong> {created.password}</div>
+            <div><strong>Plan:</strong> {created.plan}</div>
+            <div><strong>Modules:</strong> {created.modules.join(', ') || '—'}</div>
+          </div>
+        </div>
+        <div className="pk-modal__foot">
+          <button type="button" className="pk-btn pk-btn--dark" onClick={() => onSaved()}>Done</button>
+        </div>
+      </PkModal>
+    );
+  }
 
   return (
     <PkModal title="Create New Shop" onClose={onClose} wide>
@@ -463,20 +812,23 @@ function CustomerModal({ plans, onClose, onSaved }) {
         <div className="pk-modal__body">
           {error && <div style={{ background: '#fee2e2', border: '1.5px solid #fca5a5', borderRadius: 'var(--radius-md)', padding: '0.625rem 0.875rem', fontSize: '0.82rem', color: '#dc2626', marginBottom: '1rem' }}>{error}</div>}
           <div className="pk-form-row">
-            <div className="pk-field"><label>Full Name *</label><input className="pk-input" value={form.name} onChange={(e) => set('name', e.target.value)} required /></div>
-            <div className="pk-field"><label>Email *</label><input type="email" className="pk-input" value={form.email} onChange={(e) => set('email', e.target.value)} required /></div>
-            <div className="pk-field"><label>Password *</label><input type="password" className="pk-input" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={8} /></div>
-            <div className="pk-field">
-              <label>Role</label>
-              <select className="pk-input" value={form.role} onChange={(e) => set('role', e.target.value)}>
-                <option value="admin">Admin</option>
-                <option value="staff">Staff</option>
-              </select>
-            </div>
-            <div className="pk-field"><label>Shop Name</label><input className="pk-input" value={form.shop_name} onChange={(e) => set('shop_name', e.target.value)} /></div>
-            <div className="pk-field"><label>Phone</label><input className="pk-input" value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
+            <div className="pk-field"><label>Owner name *</label><input className="pk-input" autoComplete="name" value={form.name} onChange={(e) => set('name', e.target.value)} required /></div>
+            <div className="pk-field"><label>Login email *</label><input type="email" className="pk-input" autoComplete="username" value={form.email} onChange={(e) => set('email', e.target.value)} required /></div>
+            <div className="pk-field"><label>Login password *</label><input type="password" className="pk-input" autoComplete="new-password" value={form.password} onChange={(e) => set('password', e.target.value)} required minLength={8} /></div>
+            <div className="pk-field"><label>Shop name</label><input className="pk-input" autoComplete="organization" value={form.shop_name} onChange={(e) => set('shop_name', e.target.value)} /></div>
+            <div className="pk-field"><label>Phone</label><input className="pk-input" autoComplete="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} /></div>
           </div>
-          <div style={{ borderTop: '1.5px solid var(--border)', margin: '1rem 0 0.5rem', paddingTop: '0.75rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subscription</div>
+
+          <div style={{ borderTop: '1.5px solid var(--border)', margin: '1rem 0 0.5rem', paddingTop: '0.75rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Business type</div>
+          <div className="pk-field" style={{ marginBottom: '0.75rem' }}>
+            <select className="pk-input" value={form.business_type} onChange={(e) => set('business_type', e.target.value)} required>
+              {SHOP_TYPES.map((type) => (
+                <option key={type.key} value={type.key}>{type.label} — {type.description}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ borderTop: '1.5px solid var(--border)', margin: '1rem 0 0.5rem', paddingTop: '0.75rem', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subscription plan</div>
           <div className="pk-form-row" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
             <div className="pk-field">
               <label>Plan *</label>
@@ -1074,7 +1426,7 @@ const DEMO_STATUS_COLORS = {
   declined:  { bg: '#f3f4f6', color: '#6b7280', label: 'Declined'  },
 };
 
-function DemoRequestsPanel({ requests, onRefresh }) {
+function DemoRequestsPanel({ requests, onRefresh, onConvert }) {
   const [updating, setUpdating] = useState(null);
 
   const updateStatus = async (id, status) => {
@@ -1112,6 +1464,7 @@ function DemoRequestsPanel({ requests, onRefresh }) {
                 <th>Message</th>
                 <th>Received</th>
                 <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1152,6 +1505,16 @@ function DemoRequestsPanel({ requests, onRefresh }) {
                           <option key={key} value={key}>{val.label}</option>
                         ))}
                       </select>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        className="pk-btn pk-btn--xs pk-btn--dark"
+                        onClick={() => onConvert?.(r)}
+                        title="Convert lead into active tenant shop"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}
+                      >
+                        <i className="bi bi-person-plus-fill" /> Provision Shop
+                      </button>
                     </td>
                   </tr>
                 );

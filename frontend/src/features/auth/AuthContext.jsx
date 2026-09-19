@@ -63,10 +63,8 @@ export function AuthProvider({ children }) {
     clearBranch();
   };
 
-  const register = async (payload) => {
-    const { data } = await api.post('/auth/register', payload);
-    persistAuth(data);
-    return data;
+  const register = async () => {
+    throw new Error('Shops are created by a platform admin, not by public registration.');
   };
 
   const login = async (payload) => {
@@ -95,10 +93,53 @@ export function AuthProvider({ children }) {
     clearAuth();
   };
 
+  const refreshUser = async () => {
+    if (!token) return null;
+    try {
+      const { data } = await api.get('/auth/me');
+      setUser(data.user);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      return data.user;
+    } catch {
+      return null;
+    }
+  };
+
+  const hasCapability = (cap) => {
+    if (!cap) return true;
+    if (user?.role === 'superadmin') return true;
+
+    const aliases = { suppliers: 'vendor', vendor: 'suppliers' };
+    const altCap = aliases[cap];
+
+    // Check shop profile capabilities
+    const profileCaps = user?.shop_profile?.capabilities || [];
+    if (profileCaps.includes(cap) || (altCap && profileCaps.includes(altCap))) {
+      return true;
+    }
+
+    // Check subscription plan modules
+    const modules = user?.subscription?.modules || [];
+    if (modules.includes(cap) || (altCap && modules.includes(altCap))) {
+      return true;
+    }
+
+    // Standard core modules are enabled by default
+    const coreModules = ['dashboard', 'pos', 'products', 'inventory', 'orders', 'crm', 'reports', 'settings'];
+    return coreModules.includes(cap);
+  };
+
+  const businessType = user?.shop_profile?.business_type || 'retail';
+  const posMode = user?.shop_profile?.pos_mode || 'retail';
+
   const value = {
     token,
     user,
     booting,
+    businessType,
+    posMode,
+    hasCapability,
+    refreshUser,
     login,
     logout,
     register

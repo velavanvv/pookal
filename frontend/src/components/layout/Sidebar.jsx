@@ -1,12 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { navigation } from '../../data/navigation';
+import { navigationGroups } from '../../data/navigation';
 import { useAuth } from '../../features/auth/AuthContext';
+import { useI18n } from '../../features/auth/I18nContext';
 import { useBranch } from '../../features/branches/BranchContext';
 import api from '../../services/api';
 
 export default function Sidebar({ open, onClose }) {
-  const { user, logout } = useAuth();
+  const { user, logout, hasCapability, businessType } = useAuth();
+  const { t } = useI18n();
   const { activeBranch, switchBranch } = useBranch();
   const navigate = useNavigate();
 
@@ -14,7 +16,6 @@ export default function Sidebar({ open, onClose }) {
   const isAdmin       = user?.role === 'admin';
   const isOwner       = !isSuperAdmin && !user?.parent_user_id;
   const isBranchUser  = !!user?.locked_branch;
-  const modules       = user?.subscription?.modules ?? null;
   const unreadDemos   = user?.unread_demo_requests ?? 0;
 
   const [branches, setBranches] = useState([]);
@@ -33,131 +34,155 @@ export default function Sidebar({ open, onClose }) {
   };
 
   const handleNavClick = () => {
-    // Close drawer on mobile after navigation
     onClose?.();
   };
 
-  const isVisible = (item) => {
+  const isItemVisible = (item) => {
     if (item.adminOnly && !isOwner) return false;
-    if (item.module && modules !== null && !modules.includes(item.module)) return false;
+    const required = item.capability || item.module;
+    if (required && !hasCapability(required)) return false;
     return true;
   };
 
+  const typeIcons = {
+    retail: 'bi-cart3',
+    fresh_perishable: 'bi-droplet-half',
+    restaurant: 'bi-cup-hot',
+    service: 'bi-scissors',
+    hybrid: 'bi-shop',
+  };
+
+  const currentTypeIcon = typeIcons[businessType] || 'bi-shop';
   const initials = (user?.name || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-  const activeBranches = branches.filter(b => b.is_active);
 
   return (
     <aside className={`sidebar ${open ? 'sidebar--open' : ''}`}>
-      {/* Brand */}
-      <div className="sb-brand">
-        <div className="sb-brand__logo"><i className="bi bi-flower3" /></div>
-        <div style={{ minWidth: 0 }}>
-          <div className="sb-brand__name">Pookal</div>
-          <div className="sb-brand__sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {isSuperAdmin ? 'Platform Admin' : (user?.shop_name || 'Florist Suite')}
+      {/* ── BRAND HEADER ── */}
+      <div className="sb-brand" style={{ padding: '1rem 1.15rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div
+          className="sb-brand__logo"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '9px',
+            background: 'linear-gradient(135deg, #0284c7, #0369a1)',
+            color: '#fff',
+            display: 'grid',
+            placeItems: 'center',
+            fontSize: '1.1rem',
+          }}
+        >
+          <i className={`bi ${isSuperAdmin ? 'bi-shield-check' : currentTypeIcon}`} />
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="sb-brand__name" style={{ fontWeight: 800, fontSize: '0.92rem', color: '#fff', lineHeight: 1.2 }}>
+            {isSuperAdmin ? 'UBP Admin Control' : (user?.shop_name || 'Universal Business')}
+          </div>
+          <div className="sb-brand__sub" style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {isSuperAdmin ? 'Platform Management' : (user?.shop_profile?.label || 'Universal Business Platform')}
           </div>
         </div>
-        {/* Close button — mobile only */}
         <button className="sb-close" onClick={onClose} aria-label="Close menu">
           <i className="bi bi-x-lg" />
         </button>
       </div>
 
-      {/* Locked branch badge */}
-      {isBranchUser && (
-        <div style={{ padding: '0 0.75rem 0.5rem' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Branch</div>
-          <div style={{
-            background: 'rgba(125,41,74,0.3)', border: '1px solid rgba(125,41,74,0.5)',
-            borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.75rem',
-            fontSize: '0.78rem', color: '#fda4af', display: 'flex', alignItems: 'center', gap: '0.4rem',
-          }}>
-            <i className="bi bi-lock-fill" style={{ fontSize: '0.7rem' }} />
-            <span style={{ fontWeight: 600 }}>{user.locked_branch.name}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Branch switcher — admin only */}
-      {isAdmin && !isBranchUser && activeBranches.length > 0 && (
-        <div style={{ padding: '0 0.75rem 0.5rem' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.35rem' }}>Branch View</div>
-          <select
-            value={activeBranch?.id || ''}
-            onChange={(e) => {
-              const found = activeBranches.find(b => String(b.id) === e.target.value);
-              switchBranch(found || null);
-            }}
-            style={{
-              width: '100%', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: '0.78rem', padding: '0.35rem 0.6rem',
-              cursor: 'pointer', outline: 'none',
-            }}
-          >
-            <option value="" style={{ background: '#18181b' }}>🏪 Main Shop (All)</option>
-            {activeBranches.map(b => (
-              <option key={b.id} value={b.id} style={{ background: '#18181b' }}>└ {b.name}</option>
-            ))}
-          </select>
-          <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.25rem', textAlign: 'center' }}>
-            {activeBranch ? <><strong style={{ color: 'rgba(255,255,255,0.7)' }}>{activeBranch.name}</strong></> : 'Viewing all branches combined'}
-          </div>
-        </div>
-      )}
-
-      {/* Nav */}
-      <nav className="sb-nav">
+      {/* ── GROUPED GOOGLE WORKSPACE STYLE NAVIGATION ── */}
+      <nav className="sb-nav" style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 0.5rem' }}>
         {isSuperAdmin ? (
-          <NavLink
-            to="/admin"
-            onClick={handleNavClick}
-            className={({ isActive }) => `sb-link sb-link--admin ${isActive ? 'sb-link--active' : ''}`}
-          >
-            <i className="bi bi-shield-lock" />
-            <span>Admin Panel</span>
-            {unreadDemos > 0 && (
-              <span className="sb-badge">{unreadDemos > 99 ? '99+' : unreadDemos}</span>
-            )}
-          </NavLink>
-        ) : (
-          navigation.filter(isVisible).map(item => (
+          <div style={{ padding: '0 0.5rem' }}>
             <NavLink
-              key={item.path}
-              to={item.path}
+              to="/admin"
               onClick={handleNavClick}
-              className={({ isActive }) => `sb-link ${isActive ? 'sb-link--active' : ''}`}
+              className={({ isActive }) => `sb-link sb-link--admin ${isActive ? 'sb-link--active' : ''}`}
             >
-              <i className={`bi ${item.icon}`} />
-              <span>{item.label}</span>
+              <i className="bi bi-shield-lock" />
+              <span>Admin Console</span>
+              {unreadDemos > 0 && (
+                <span className="sb-badge">{unreadDemos > 99 ? '99+' : unreadDemos}</span>
+              )}
             </NavLink>
-          ))
+          </div>
+        ) : (
+          navigationGroups.map((group) => {
+            const visibleItems = group.items.filter(isItemVisible);
+            if (visibleItems.length === 0) return null;
+
+            return (
+              <div key={group.title} style={{ marginBottom: '1.15rem' }}>
+                <div
+                  style={{
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    color: 'rgba(255,255,255,0.4)',
+                    padding: '0.25rem 0.85rem 0.35rem',
+                  }}
+                >
+                  {t(group.i18nKey) || group.title}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                  {visibleItems.map((item) => (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      onClick={handleNavClick}
+                      className={({ isActive }) => `sb-link ${isActive ? 'sb-link--active' : ''}`}
+                      style={{
+                        borderRadius: '10px',
+                        padding: '0.45rem 0.85rem',
+                        fontSize: '0.82rem',
+                      }}
+                    >
+                      <i className={`bi ${item.icon}`} style={{ fontSize: '0.95rem' }} />
+                      <span>{t(item.i18nKey) || item.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })
         )}
       </nav>
 
-      {/* Subscription badge */}
-      {!isSuperAdmin && user?.subscription && (
-        <div style={{ padding: '0 0.75rem 0.5rem' }}>
-          <div style={{
-            background: user.subscription.status === 'active' ? 'rgba(22,163,74,0.12)' : 'rgba(217,119,6,0.12)',
-            color: user.subscription.status === 'active' ? '#4ade80' : '#fbbf24',
-            borderRadius: 'var(--radius-sm)', padding: '0.4rem 0.75rem',
-            fontSize: '0.72rem', fontWeight: 600, textAlign: 'center',
-          }}>
-            {user.subscription.plan_name} · {user.subscription.days_left}d left
+      {/* ── FOOTER: SUBSCRIPTION STATUS & USER PROFILE ── */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '0.75rem', background: 'rgba(0,0,0,0.15)' }}>
+        {!isSuperAdmin && user?.subscription && (
+          <div style={{ marginBottom: '0.5rem' }}>
+            <div
+              style={{
+                background: user.subscription.status === 'active' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)',
+                color: user.subscription.status === 'active' ? '#4ade80' : '#fbbf24',
+                borderRadius: '8px',
+                padding: '0.35rem 0.65rem',
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{user.subscription.plan_name}</span>
+              <span>{user.subscription.days_left}d left</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* User */}
-      <div className="sb-user">
-        <div className="sb-user__avatar">{initials}</div>
-        <div className="sb-user__info">
-          <div className="sb-user__name">{user?.name || '—'}</div>
-          <div className="sb-user__email">{user?.email}</div>
+        <div className="sb-user" style={{ padding: '0.35rem 0.5rem' }}>
+          <div className="sb-user__avatar" style={{ background: '#0284c7', color: '#fff', width: 32, height: 32, fontSize: '0.78rem' }}>
+            {initials}
+          </div>
+          <div className="sb-user__info">
+            <div className="sb-user__name" style={{ fontSize: '0.82rem' }}>{user?.name || 'Staff'}</div>
+            <div className="sb-user__email" style={{ fontSize: '0.7rem' }}>{user?.email}</div>
+          </div>
+          <button className="sb-user__out" onClick={handleLogout} title="Sign out" style={{ color: '#f87171' }}>
+            <i className="bi bi-box-arrow-right" />
+          </button>
         </div>
-        <button className="sb-user__out" onClick={handleLogout} title="Sign out">
-          <i className="bi bi-box-arrow-right" />
-        </button>
       </div>
     </aside>
   );

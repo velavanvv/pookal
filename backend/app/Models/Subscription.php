@@ -29,11 +29,15 @@ class Subscription extends PlatformModel
 
     public function isExpired(): bool
     {
-        return $this->end_date->isPast();
+        return $this->end_date?->isPast() ?? false;
     }
 
     public function daysUntilRenewal(): int
     {
-        return max(0, now()->diffInDays($this->end_date, false));
+        if (! $this->end_date) {
+            return 0;
+        }
+
+        return max(0, (int) now()->diffInDays($this->end_date, false));
     }
 }

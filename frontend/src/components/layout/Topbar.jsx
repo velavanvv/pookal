@@ -15,7 +15,7 @@ export default function Topbar() {
       <div className="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
         <div>
           <p className="text-uppercase text-muted small mb-1">Operations center</p>
-          <h2 className="h4 mb-0">Retail florist architecture starter</h2>
+          <h2 className="h4 mb-0">{user?.shop_name || 'Shop'} — Operations</h2>
         </div>
         <div className="d-flex align-items-center gap-2">
           <span className="badge text-bg-success">{user?.email || 'Live sync ready'}</span>

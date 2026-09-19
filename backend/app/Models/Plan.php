@@ -23,6 +23,11 @@ class Plan extends PlatformModel
     {
         $modules = $this->modules ?? [];
 
+        // Legacy module key
+        if (in_array('vendor', $modules, true) && ! in_array('suppliers', $modules, true)) {
+            $modules[] = 'suppliers';
+        }
+
         if (in_array('inventory', $modules, true) && ! in_array('products', $modules, true)) {
             $modules[] = 'products';
         }

@@ -36,6 +36,9 @@
  *    Models: Product, Customer, Order, ShopSetting … (→ TenantModel)
  *    Path:   database/tenants/shop-{owner_id}/main.sqlite
  *            database/tenants/shop-{owner_id}/branch-{code}.sqlite
+ *
+ *  Shop profiles (platform): business_type + capabilities
+ *    retail | fresh_perishable | restaurant | service | hybrid
  * ════════════════════════════════════════════════════════════════════════════════
  */
 
@@ -49,16 +52,21 @@ use App\Models\Customer;
 use App\Models\Farmer;
 use App\Models\FarmerDelivery;
 use App\Models\FarmerPayment;
+use App\Models\KitchenTicket;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Plan;
 use App\Models\Product;
+use App\Models\ProductModifier;
+use App\Models\RestaurantTable;
+use App\Models\ShopProfile;
 use App\Models\ShopSetting;
 use App\Models\StockLedger;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantProvisioner;
+use App\Support\Tenancy\TenantSchemaManager;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -87,7 +95,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        $allModules = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
+        $allModules = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'suppliers', 'settings', 'website'];
 
         $plans = [];
         foreach ([
@@ -115,19 +123,20 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // ── Main-shop staff (no branch_id → inherits main shop DB) ───────────
-        $shopStaff = User::firstOrCreate(
-            ['email' => 'staff@pookal.com'],
+        ShopProfile::firstOrCreate(
+            ['user_id' => $shopAdmin->id],
             [
-                'name'           => 'Kavitha (Main Counter)',
-                'role'           => 'staff',
-                'shop_name'      => 'Pookal Flowers',
-                'phone'          => '9876543211',
-                'password'       => Hash::make('pookal123'),
-                'parent_user_id' => $shopAdmin->id,
-                // No branch_id → ResolveTenantContext activates the MAIN shop DB
+                'business_type' => 'fresh_perishable',
+                'capabilities' => ['suppliers'],
+                'settings' => [
+                    'default_units' => ['kg', 'bunch', 'piece'],
+                    'default_categories' => ['Bouquets', 'Roses', 'Seasonal'],
+                    'track_expiry_default' => true,
+                ],
             ]
         );
+
+      
 
         if (! $shopAdmin->subscriptions()->exists()) {
             Subscription::create([
@@ -189,28 +198,84 @@ class DatabaseSeeder extends Seeder
             'website_secondary_color' => '#25543a',
         ]);
 
-        // ── Main shop products ────────────────────────────────────────────────
+        // ── Main shop products (Pookal Tamil Floral Catalog) ──────────────────
         $mainProducts = $this->seedProducts($uid, [
-            ['name' => 'Red Rose Bouquet',       'sku' => 'ROSE-RED-001',   'category' => 'Bouquet',      'price' => 799,   'unit' => 'bunch',   'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 3, 'stock' => 45],
-            ['name' => 'White Lily Bouquet',      'sku' => 'LILY-WHT-001',   'category' => 'Bouquet',      'price' => 1_299, 'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 22],
-            ['name' => 'Mixed Flower Basket',     'sku' => 'MIX-BSKT-001',  'category' => 'Arrangement',  'price' => 1_499, 'unit' => 'piece',   'reorder_level' => 5,  'track_freshness' => true,  'freshness_days' => 3, 'stock' => 18],
-            ['name' => 'Carnation Bouquet',       'sku' => 'CARN-BCH-001',   'category' => 'Bouquet',      'price' => 699,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 19],
-            ['name' => 'Tulip Bouquet',           'sku' => 'TULIP-BCH-001',  'category' => 'Bouquet',      'price' => 999,   'unit' => 'bunch',   'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 12],
-            ['name' => 'Jasmine String (1 m)',    'sku' => 'JASMINE-STR',    'category' => 'Garland',      'price' => 149,   'unit' => 'metre',   'reorder_level' => 50, 'track_freshness' => true,  'freshness_days' => 1, 'stock' => 180],
-            ['name' => 'Marigold Garland',        'sku' => 'MARIGOLD-GRL',   'category' => 'Garland',      'price' => 249,   'unit' => 'piece',   'reorder_level' => 15, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 60],
-            ['name' => 'Orchid Stem',             'sku' => 'ORCHID-STM-001', 'category' => 'Stem',         'price' => 399,   'unit' => 'stem',    'reorder_level' => 12, 'track_freshness' => true,  'freshness_days' => 7, 'stock' => 35],
-            ['name' => 'Sunflower Bunch',         'sku' => 'SUNFLWR-BCH',    'category' => 'Bunch',        'price' => 599,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 7],
-            ['name' => 'Lotus Flower',            'sku' => 'LOTUS-001',      'category' => 'Stem',         'price' => 299,   'unit' => 'stem',    'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 4],
-            ['name' => 'Chrysanthemum Bunch',     'sku' => 'CHRYS-BCH',      'category' => 'Bunch',        'price' => 449,   'unit' => 'bunch',   'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 4, 'stock' => 28],
-            ['name' => 'Gerbera Bunch',           'sku' => 'GERB-BCH-001',   'category' => 'Bunch',        'price' => 499,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 31],
-            ["name" => "Baby's Breath",           'sku' => 'BABYBTH-001',    'category' => 'Bunch',        'price' => 349,   'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 3],
-            ['name' => 'Lavender Bundle',         'sku' => 'LAVNDR-001',     'category' => 'Bunch',        'price' => 549,   'unit' => 'bundle',  'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 6, 'stock' => 14],
-            ['name' => 'Rose Petals (100 g)',     'sku' => 'ROSE-PETALS',    'category' => 'Loose Flower', 'price' => 199,   'unit' => '100g',    'reorder_level' => 20, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 85],
-            ['name' => 'Gold Wrapping Paper',     'sku' => 'WRAP-GOLD-01',   'category' => 'Supply',       'price' => 49,    'unit' => 'sheet',   'reorder_level' => 30, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 120],
-            ['name' => 'Red Ribbon Bundle',       'sku' => 'RIBBON-RED',     'category' => 'Supply',       'price' => 89,    'unit' => 'roll',    'reorder_level' => 15, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 42],
-            ['name' => 'Flower Box (Medium)',     'sku' => 'BOX-MED-001',    'category' => 'Supply',       'price' => 129,   'unit' => 'piece',   'reorder_level' => 20, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 55],
-            ['name' => 'Glass Vase (Medium)',     'sku' => 'VASE-GLASS-M',   'category' => 'Accessory',    'price' => 599,   'unit' => 'piece',   'reorder_level' => 5,  'track_freshness' => false, 'freshness_days' => 0, 'stock' => 18],
-            ['name' => 'Flower Food Sachet',      'sku' => 'FOOD-SACHET',    'category' => 'Supply',       'price' => 29,    'unit' => 'sachet',  'reorder_level' => 40, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 200],
+            [
+                'name' => 'Madurai Jasmine (மதுரை மல்லிகை)',
+                'sku' => 'JASMINE-MADURAI-01',
+                'category' => 'Loose Flower',
+                'price' => 180,
+                'unit' => 'metre',
+                'reorder_level' => 30,
+                'track_freshness' => true,
+                'freshness_days' => 1,
+                'stock' => 120,
+                'image_url' => 'https://images.unsplash.com/photo-1592754862816-1a21a4ea2281?auto=format&fit=crop&w=600&q=80',
+            ],
+            [
+                'name' => 'Red Rose Garland (பன்னீர் ரோஜா மாலை)',
+                'sku' => 'GARLAND-ROSE-RED-01',
+                'category' => 'Garland',
+                'price' => 450,
+                'unit' => 'piece',
+                'reorder_level' => 15,
+                'track_freshness' => true,
+                'freshness_days' => 2,
+                'stock' => 50,
+                'image_url' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80',
+            ],
+            [
+                'name' => 'Yellow Marigold (மஞ்சள் சாமந்தி)',
+                'sku' => 'MARIGOLD-YELLOW-250G',
+                'category' => 'Loose Flower',
+                'price' => 120,
+                'unit' => '250g',
+                'reorder_level' => 25,
+                'track_freshness' => true,
+                'freshness_days' => 2,
+                'stock' => 80,
+                'image_url' => 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?auto=format&fit=crop&w=600&q=80',
+            ],
+            [
+                'name' => 'Tulasi Garland (துளசி மாலை)',
+                'sku' => 'TULASI-GARLAND-01',
+                'category' => 'Garland',
+                'price' => 150,
+                'unit' => 'piece',
+                'reorder_level' => 20,
+                'track_freshness' => true,
+                'freshness_days' => 2,
+                'stock' => 65,
+                'image_url' => 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&w=600&q=80',
+            ],
+            [
+                'name' => 'Lotus Flower (செந்தாமரை & வெண்தாமரை)',
+                'sku' => 'LOTUS-POOJA-PAIR',
+                'category' => 'Stem',
+                'price' => 60,
+                'unit' => 'piece',
+                'reorder_level' => 10,
+                'track_freshness' => true,
+                'freshness_days' => 2,
+                'stock' => 40,
+                'image_url' => 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&w=600&q=80',
+            ],
+            [
+                'name' => 'Daily Pooja Combo Pack (தினசரி பூஜை காம்போ)',
+                'sku' => 'POOJA-COMBO-DAILY-01',
+                'category' => 'Combo',
+                'price' => 299,
+                'unit' => 'pack',
+                'reorder_level' => 15,
+                'track_freshness' => true,
+                'freshness_days' => 2,
+                'stock' => 35,
+                'image_url' => 'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80',
+            ],
+            ['name' => 'Red Rose Bouquet',       'sku' => 'ROSE-RED-001',   'category' => 'Bouquet',      'price' => 799,   'unit' => 'bunch',   'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 3, 'stock' => 45, 'image_url' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'White Lily Bouquet',      'sku' => 'LILY-WHT-001',   'category' => 'Bouquet',      'price' => 1_299, 'unit' => 'bunch',   'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 22, 'image_url' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Mixed Flower Basket',     'sku' => 'MIX-BSKT-001',  'category' => 'Arrangement',  'price' => 1_499, 'unit' => 'piece',   'reorder_level' => 5,  'track_freshness' => true,  'freshness_days' => 3, 'stock' => 18, 'image_url' => 'https://images.unsplash.com/photo-1561181286-d3fee7d55364?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Rose Petals (100 g)',     'sku' => 'ROSE-PETALS',    'category' => 'Loose Flower', 'price' => 99,    'unit' => '100g',    'reorder_level' => 20, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 85, 'image_url' => 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=600&q=80'],
         ]);
 
         // ── Main shop customers ───────────────────────────────────────────────
@@ -246,6 +311,8 @@ class DatabaseSeeder extends Seeder
             $this->seedBulkBuyers($uid, $mainProducts);
         }
 
+        $this->seedRestaurantData($uid, $mainProducts);
+
         // ════════════════════════════════════════════════════════════════════
         //  PHASE 3 — BRANCH TENANT DB  (Anna Nagar)
         //  provisionBranchDatabase activates the branch SQLite connection.
@@ -272,16 +339,16 @@ class DatabaseSeeder extends Seeder
 
         // ── Anna Nagar products ───────────────────────────────────────────────
         $branchProducts = $this->seedProducts($uid, [
-            ['name' => 'Red Rose Bouquet',     'sku' => 'ROSE-RED-001',  'category' => 'Bouquet',  'price' => 799,   'unit' => 'bunch', 'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 3, 'stock' => 30],
-            ['name' => 'White Lily Bouquet',   'sku' => 'LILY-WHT-001',  'category' => 'Bouquet',  'price' => 1_299, 'unit' => 'bunch', 'reorder_level' => 5,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 10],
-            ['name' => 'Jasmine String (1 m)', 'sku' => 'JASMINE-STR',   'category' => 'Garland',  'price' => 149,   'unit' => 'metre', 'reorder_level' => 40, 'track_freshness' => true,  'freshness_days' => 1, 'stock' => 120],
-            ['name' => 'Marigold Garland',     'sku' => 'MARIGOLD-GRL',  'category' => 'Garland',  'price' => 249,   'unit' => 'piece', 'reorder_level' => 10, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 45],
-            ['name' => 'Sunflower Bunch',      'sku' => 'SUNFLWR-BCH',   'category' => 'Bunch',    'price' => 599,   'unit' => 'bunch', 'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 14],
-            ['name' => 'Carnation Bouquet',    'sku' => 'CARN-BCH-001',  'category' => 'Bouquet',  'price' => 699,   'unit' => 'bunch', 'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 20],
-            ['name' => 'Orchid Stem',          'sku' => 'ORCHID-STM-001','category' => 'Stem',     'price' => 399,   'unit' => 'stem',  'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 7, 'stock' => 15],
-            ['name' => 'Rose Petals (100 g)',  'sku' => 'ROSE-PETALS',   'category' => 'Loose Flower','price' => 199, 'unit' => '100g', 'reorder_level' => 15, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 50],
-            ['name' => 'Gold Wrapping Paper',  'sku' => 'WRAP-GOLD-01',  'category' => 'Supply',   'price' => 49,    'unit' => 'sheet', 'reorder_level' => 20, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 80],
-            ['name' => 'Flower Box (Medium)',  'sku' => 'BOX-MED-001',   'category' => 'Supply',   'price' => 129,   'unit' => 'piece', 'reorder_level' => 15, 'track_freshness' => false, 'freshness_days' => 0, 'stock' => 35],
+            ['name' => 'Madurai Jasmine (மதுரை மல்லிகை)', 'sku' => 'JASMINE-MADURAI-BR', 'category' => 'Loose Flower', 'price' => 180, 'unit' => 'metre', 'reorder_level' => 20, 'track_freshness' => true, 'freshness_days' => 1, 'stock' => 80, 'image_url' => 'https://images.unsplash.com/photo-1592754862816-1a21a4ea2281?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Red Rose Garland (பன்னீர் ரோஜா மாலை)', 'sku' => 'GARLAND-ROSE-BR', 'category' => 'Garland', 'price' => 450, 'unit' => 'piece', 'reorder_level' => 10, 'track_freshness' => true, 'freshness_days' => 2, 'stock' => 30, 'image_url' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Yellow Marigold (மஞ்சள் சாமந்தி)', 'sku' => 'MARIGOLD-YELLOW-BR', 'category' => 'Loose Flower', 'price' => 120, 'unit' => '250g', 'reorder_level' => 15, 'track_freshness' => true, 'freshness_days' => 2, 'stock' => 45, 'image_url' => 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Tulasi Garland (துளசி மாலை)', 'sku' => 'TULASI-GARLAND-BR', 'category' => 'Garland', 'price' => 150, 'unit' => 'piece', 'reorder_level' => 10, 'track_freshness' => true, 'freshness_days' => 2, 'stock' => 40, 'image_url' => 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Lotus Flower (செந்தாமரை & வெண்தாமரை)', 'sku' => 'LOTUS-POOJA-BR', 'category' => 'Stem', 'price' => 60, 'unit' => 'piece', 'reorder_level' => 8, 'track_freshness' => true, 'freshness_days' => 2, 'stock' => 25, 'image_url' => 'https://images.unsplash.com/photo-1527061011665-3652c757a4d4?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Daily Pooja Combo Pack (தினசரி பூஜை காம்போ)', 'sku' => 'POOJA-COMBO-BR', 'category' => 'Combo', 'price' => 299, 'unit' => 'pack', 'reorder_level' => 10, 'track_freshness' => true, 'freshness_days' => 2, 'stock' => 20, 'image_url' => 'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Red Rose Bouquet',     'sku' => 'ROSE-RED-001',  'category' => 'Bouquet',  'price' => 799,   'unit' => 'bunch', 'reorder_level' => 8,  'track_freshness' => true,  'freshness_days' => 3, 'stock' => 30, 'image_url' => 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'White Lily Bouquet',   'sku' => 'LILY-WHT-001',  'category' => 'Bouquet',  'price' => 1_299, 'unit' => 'bunch', 'reorder_level' => 5,  'track_freshness' => true,  'freshness_days' => 4, 'stock' => 10, 'image_url' => 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Sunflower Bunch',      'sku' => 'SUNFLWR-BCH',   'category' => 'Bunch',    'price' => 599,   'unit' => 'bunch', 'reorder_level' => 6,  'track_freshness' => true,  'freshness_days' => 5, 'stock' => 14, 'image_url' => 'https://images.unsplash.com/photo-1597848212624-a19eb35e2651?auto=format&fit=crop&w=600&q=80'],
+            ['name' => 'Rose Petals (100 g)',  'sku' => 'ROSE-PETALS',   'category' => 'Loose Flower','price' => 99, 'unit' => '100g', 'reorder_level' => 15, 'track_freshness' => true,  'freshness_days' => 2, 'stock' => 50, 'image_url' => 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=600&q=80'],
         ]);
 
         // ── Anna Nagar customers ──────────────────────────────────────────────
@@ -308,19 +375,6 @@ class DatabaseSeeder extends Seeder
         //  PHASE 4 — BRANCH STAFF USER (platform DB — User always uses 'platform')
         // ════════════════════════════════════════════════════════════════════
 
-        User::firstOrCreate(
-            ['email' => 'annanagar@pookal.com'],
-            [
-                'name'           => 'Arjun (Anna Nagar Counter)',
-                'role'           => 'staff',
-                'shop_name'      => 'Pookal Flowers',
-                'phone'          => '9876543212',
-                'password'       => Hash::make('pookal123'),
-                'parent_user_id' => $shopAdmin->id,
-                'branch_id'      => $branch->id,
-                // branch_id set → ResolveTenantContext activates the BRANCH DB automatically
-            ]
-        );
 
         $this->command->info('');
         $this->command->info('  ┌──────────────────────────────────────────────────────────────┐');
@@ -364,6 +418,14 @@ class DatabaseSeeder extends Seeder
         foreach ($rows as $row) {
             $stock = $row['stock'];
             unset($row['stock']);
+            if (array_key_exists('track_freshness', $row)) {
+                $row['track_expiry'] = (bool) $row['track_freshness'];
+                unset($row['track_freshness']);
+            }
+            if (array_key_exists('freshness_days', $row)) {
+                $row['shelf_life_days'] = (int) ($row['freshness_days'] ?: 3);
+                unset($row['freshness_days']);
+            }
             $product = Product::updateOrCreate(
                 ['sku' => $row['sku']],
                 array_merge($row, ['user_id' => $uid])
@@ -469,14 +531,14 @@ class DatabaseSeeder extends Seeder
 
             foreach (range(1, 3) as $d) {
                 $qty = rand(10, 60); $rate = rand(20, 80);
-                FarmerDelivery::create([
+                FarmerDelivery::create(TenantSchemaManager::syncLegacyColumns('farmer_deliveries', [
                     'user_id' => $uid, 'farmer_id' => $farmer->id,
-                    'flower_type' => ['Rose', 'Lily', 'Marigold'][$d - 1],
+                    'item_name' => ['Rose', 'Lily', 'Marigold'][$d - 1],
                     'quantity' => $qty, 'unit' => 'kg', 'rate_per_unit' => $rate,
                     'total_amount' => round($qty * $rate, 2),
                     'delivery_date' => Carbon::today()->subDays(rand(1, 30))->toDateString(),
                     'quality_grade' => ['A', 'B', 'A'][array_rand(['A', 'B', 'A'])],
-                ]);
+                ]));
             }
 
             FarmerPayment::create([
@@ -513,12 +575,47 @@ class DatabaseSeeder extends Seeder
                 ]);
                 foreach (['Rose', 'Marigold', 'Lily'] as $flower) {
                     $qty = rand(5, 30); $rate = rand(15, 60);
-                    BulkSaleItem::create([
-                        'bulk_sale_id' => $sale->id, 'flower_type' => $flower,
+                    BulkSaleItem::create(TenantSchemaManager::syncLegacyColumns('bulk_sale_items', [
+                        'bulk_sale_id' => $sale->id, 'item_name' => $flower,
                         'quantity' => $qty, 'unit' => 'kg', 'rate_per_unit' => $rate,
                         'total_amount' => round($qty * $rate, 2),
-                    ]);
+                    ]));
                 }
+            }
+        }
+    }
+
+    private function seedRestaurantData(int $uid, array $products): void
+    {
+        if (RestaurantTable::where('user_id', $uid)->count() === 0) {
+            foreach ([
+                ['name' => 'Table 1', 'capacity' => 2, 'section' => 'Main Hall', 'status' => 'vacant'],
+                ['name' => 'Table 2', 'capacity' => 4, 'section' => 'Main Hall', 'status' => 'occupied'],
+                ['name' => 'Table 3', 'capacity' => 4, 'section' => 'Window Side', 'status' => 'billing'],
+                ['name' => 'Table 4', 'capacity' => 6, 'section' => 'Family Corner', 'status' => 'vacant'],
+                ['name' => 'Table 5', 'capacity' => 8, 'section' => 'Private Dining', 'status' => 'reserved'],
+                ['name' => 'Rooftop 1', 'capacity' => 4, 'section' => 'Rooftop Terrace', 'status' => 'vacant'],
+            ] as $tbl) {
+                RestaurantTable::create(array_merge($tbl, ['user_id' => $uid]));
+            }
+        }
+
+        if (ProductModifier::count() === 0 && ! empty($products)) {
+            foreach (array_slice($products, 0, 5) as $p) {
+                ProductModifier::create([
+                    'product_id'  => $p->id,
+                    'name'        => 'Custom Message Card',
+                    'price_delta' => 49.00,
+                    'is_required' => false,
+                    'options'     => ['Handwritten Note', 'Printed Gold Card', 'Audio QR Greeting'],
+                ]);
+                ProductModifier::create([
+                    'product_id'  => $p->id,
+                    'name'        => 'Gift Wrapping & Satin Ribbon',
+                    'price_delta' => 99.00,
+                    'is_required' => false,
+                    'options'     => ['Royal Velvet Red', 'Classic Gold', 'Eco Kraft Paper'],
+                ]);
             }
         }
     }

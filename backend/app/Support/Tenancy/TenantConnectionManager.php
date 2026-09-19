@@ -18,6 +18,7 @@ class TenantConnectionManager
         DB::reconnect('tenant');
 
         TenantContext::activate($database);
+        app(TenantSchemaManager::class)->ensureSchema();
 
         return $database;
     }
