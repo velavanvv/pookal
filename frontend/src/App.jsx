@@ -12,22 +12,27 @@ import CrmPage from './features/crm/CrmPage';
 import DeliveryPage from './features/delivery/DeliveryPage';
 import ReportsPage from './features/reports/ReportsPage';
 import SettingsPage from './features/settings/SettingsPage';
+import RestaurantPage from './features/restaurant/RestaurantPage';
 import WebsiteConfigPage from './features/website/WebsiteConfigPage';
 import StorefrontPage from './features/website/StorefrontPage';
+import PookalStorefront from './features/website/PookalStorefront';
 import AdminPage from './features/admin/AdminPage';
-import VendorPage from './features/vendor/VendorPage';
+import SuppliersPage from './features/suppliers/SuppliersPage';
 import BranchesPage from './features/branches/BranchesPage';
 import UsersPage from './features/users/UsersPage';
 import LoginPage from './features/auth/LoginPage';
-import RegisterPage from './features/auth/RegisterPage';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/pookal" element={<PookalStorefront />} />
+      <Route path="/store/pookal" element={<PookalStorefront />} />
       <Route path="/store/:slug" element={<StorefrontPage />} />
+      <Route path="/store" element={<StorefrontPage />} />
+      <Route path="/storefront" element={<StorefrontPage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
 
       <Route
         element={
@@ -45,11 +50,13 @@ export default function App() {
         <Route path="/pos"           element={<ShopRoute requiredModule="pos"><PosPage /></ShopRoute>} />
         <Route path="/inventory"     element={<ShopRoute requiredModule="inventory"><InventoryPage /></ShopRoute>} />
         <Route path="/orders"        element={<ShopRoute requiredModule="orders"><OrdersPage /></ShopRoute>} />
+        <Route path="/restaurant"    element={<ShopRoute requiredCapability="restaurant"><RestaurantPage /></ShopRoute>} />
         <Route path="/crm"           element={<ShopRoute requiredModule="crm"><CrmPage /></ShopRoute>} />
         <Route path="/delivery"      element={<ShopRoute requiredModule="delivery"><DeliveryPage /></ShopRoute>} />
         <Route path="/reports"       element={<ShopRoute requiredModule="reports"><ReportsPage /></ShopRoute>} />
         <Route path="/website-config" element={<ShopRoute requiredModule="website"><WebsiteConfigPage /></ShopRoute>} />
-        <Route path="/vendor"        element={<ShopRoute requiredModule="vendor"><VendorPage /></ShopRoute>} />
+        <Route path="/suppliers"     element={<ShopRoute requiredModule="suppliers"><SuppliersPage /></ShopRoute>} />
+        <Route path="/vendor"        element={<ShopRoute requiredModule="suppliers"><SuppliersPage /></ShopRoute>} />
         <Route path="/branches"      element={<ShopRoute><BranchesPage /></ShopRoute>} />
         <Route path="/users"         element={<ShopRoute><UsersPage /></ShopRoute>} />
         <Route path="/settings"      element={<ShopRoute><SettingsPage /></ShopRoute>} />

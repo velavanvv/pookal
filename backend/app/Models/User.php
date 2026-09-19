@@ -111,4 +111,9 @@ class User extends Authenticatable
     {
         return $this->hasOne(TenantDatabase::class)->where('scope', 'main')->whereNull('branch_id');
     }
+
+    public function shopProfile()
+    {
+        return $this->hasOne(ShopProfile::class);
+    }
 }

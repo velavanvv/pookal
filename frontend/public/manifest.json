@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Pookal – Florist Management",
+  "name": "Pookal – Shop Billing",
   "short_name": "Pookal",
-  "description": "All-in-one POS, orders, inventory, delivery and CRM for florists. Manage your shop from anywhere.",
+  "description": "All-in-one POS, billing, inventory, orders and reports for any shop type.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

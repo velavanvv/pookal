@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\DemoRequest;
 use App\Models\User;
-use App\Support\Tenancy\TenantProvisioner;
+use App\Support\ShopTypePreset;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -12,36 +12,9 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController
 {
-    public function __construct(
-        private readonly TenantProvisioner $provisioner,
-    ) {
-    }
-
-    public function register(Request $request): JsonResponse
+    public function shopTypes(): JsonResponse
     {
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
-
-        $user = User::create([
-            'name' => $data['name'],
-            'role' => 'admin',
-            'shop_name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($data['password']),
-        ]);
-
-        $this->provisioner->provisionMainDatabase($user);
-
-        $token = $user->createToken('pookal-web')->plainTextToken;
-
-        return response()->json([
-            'message' => 'Registration completed.',
-            'token' => $token,
-            'user' => $user,
-        ], 201);
+        return response()->json(['types' => ShopTypePreset::publicList()]);
     }
 
     public function login(Request $request): JsonResponse
@@ -77,6 +50,12 @@ class AuthController
             'branch.plan'  // branch users → their branch plan determines module access
         );
 
+        try {
+            $user->load(['shopProfile', 'parentShop.shopProfile']);
+        } catch (\Throwable) {
+            // shop_profiles may not exist yet on older databases
+        }
+
         // Module resolution priority:
         // 1. Branch user  → branch.plan (if set), else parent shop subscription plan
         // 2. Staff user   → parent shop subscription plan
@@ -100,12 +79,14 @@ class AuthController
                 'modules'   => $sub->plan?->resolvedModules() ?? [],
                 'max_users' => $sub->plan?->max_users,
                 'status'    => $sub->status,
-                'end_date'  => $sub->end_date->toDateString(),
+                'end_date'  => $sub->end_date?->toDateString(),
                 'days_left' => $sub->daysUntilRenewal(),
             ];
         } else {
             $subscriptionData = null;
         }
+
+        $shopProfile = $user->shopProfile ?? $user->parentShop?->shopProfile;
 
         return response()->json([
             'user' => array_merge($user->toArray(), [
@@ -114,6 +95,17 @@ class AuthController
                     'label'           => $mainDatabase->label,
                     'storefront_slug' => $mainDatabase->storefront_slug,
                     'website_enabled' => $mainDatabase->website_enabled,
+                ] : null,
+                'shop_profile' => $shopProfile ? [
+                    'business_type' => $shopProfile->business_type,
+                    'label'         => $shopProfile->label(),
+                    'pos_mode'      => $shopProfile->posMode(),
+                    'capabilities'  => array_values(array_unique(array_merge(
+                        $shopProfile->capabilities ?? [],
+                        $shopProfile->preset()['extra_capabilities'] ?? []
+                    ))),
+                    'settings'      => $shopProfile->settings ?? [],
+                    'theme'         => $shopProfile->theme ?? [],
                 ] : null,
                 'subscription' => $subscriptionData,
                 // Branch users are locked to their branch — expose it to the frontend.

@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Branch;
 use App\Models\Plan;
+use App\Models\ShopProfile;
 use App\Models\ShopSetting;
 use App\Models\Subscription;
 use App\Models\TenantDatabase;
 use App\Models\User;
+use App\Support\ShopTypePreset;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantProvisioner;
 use Carbon\Carbon;
@@ -19,7 +21,7 @@ use Illuminate\Validation\Rule;
 
 class AdminController
 {
-    private const MODULES = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'vendor', 'settings', 'website'];
+    private const MODULES = ['products', 'pos', 'inventory', 'orders', 'crm', 'delivery', 'reports', 'suppliers', 'settings', 'website'];
 
     public function __construct(
         private readonly TenantProvisioner $provisioner,
@@ -60,10 +62,17 @@ class AdminController
             'price_monthly' => ['required', 'numeric', 'min:0'],
             'price_yearly'  => ['required', 'numeric', 'min:0'],
             'modules'       => ['required', 'array', 'min:1'],
-            'modules.*'     => ['string', Rule::in(self::MODULES)],
+            'modules.*'     => ['string', Rule::in([...self::MODULES, 'vendor'])],
             'max_users'     => ['nullable', 'integer', 'min:1'],
             'is_active'     => ['nullable', 'boolean'],
         ]);
+
+        if (isset($data['modules'])) {
+            $data['modules'] = array_values(array_unique(array_map(
+                fn ($module) => $module === 'vendor' ? 'suppliers' : $module,
+                $data['modules']
+            )));
+        }
 
         $plan = Plan::create($data);
         return response()->json(['message' => 'Plan created.', 'plan' => $plan], 201);
@@ -79,10 +88,17 @@ class AdminController
             'price_monthly' => ['sometimes', 'numeric', 'min:0'],
             'price_yearly'  => ['sometimes', 'numeric', 'min:0'],
             'modules'       => ['sometimes', 'array', 'min:1'],
-            'modules.*'     => ['string', Rule::in(self::MODULES)],
+            'modules.*'     => ['string', Rule::in([...self::MODULES, 'vendor'])],
             'max_users'     => ['sometimes', 'integer', 'min:1'],
             'is_active'     => ['sometimes', 'boolean'],
         ]);
+
+        if (isset($data['modules'])) {
+            $data['modules'] = array_values(array_unique(array_map(
+                fn ($module) => $module === 'vendor' ? 'suppliers' : $module,
+                $data['modules']
+            )));
+        }
 
         $plan->update($data);
         return response()->json(['message' => 'Plan updated.', 'plan' => $plan]);
@@ -158,10 +174,11 @@ class AdminController
             'password'      => ['required', 'string', 'min:8'],
             'shop_name'     => ['nullable', 'string', 'max:120'],
             'phone'         => ['nullable', 'string', 'max:20'],
-            'role'          => ['sometimes', 'string', 'in:admin,staff'],
+            'role'          => ['sometimes', 'string', 'in:admin'],
             'plan_id'       => ['required', 'exists:plans,id'],
             'billing_cycle' => ['required', 'in:monthly,yearly,trial'],
             'start_date'    => ['required', 'date'],
+            'business_type' => ['required', 'string', Rule::in(ShopTypePreset::keys())],
             'notes'         => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -169,12 +186,20 @@ class AdminController
             'name'      => $data['name'],
             'email'     => $data['email'],
             'password'  => Hash::make($data['password']),
-            'role'      => $data['role'] ?? 'admin',
+            'role'      => 'admin',
             'shop_name' => $data['shop_name'] ?? null,
             'phone'     => $data['phone'] ?? null,
         ]);
 
-        $this->provisioner->provisionMainDatabase($user);
+        $profileData = ShopTypePreset::forRegistration($data['business_type']);
+        ShopProfile::create([
+            'user_id' => $user->id,
+            'business_type' => $profileData['business_type'],
+            'capabilities' => $profileData['capabilities'],
+            'settings' => $profileData['settings'],
+        ]);
+
+        $this->provisioner->provisionMainDatabase($user, $profileData['settings']);
 
         $plan = Plan::findOrFail($data['plan_id']);
 
@@ -411,6 +436,58 @@ class AdminController
         return response()->json(['message' => 'Branch user deleted.']);
     }
 
+    // ── Self-service (available to expired/suspended users) ───────────────────
+
+    /**
+     * Returns active non-trial plans — visible to any authenticated user
+     * so expired shops can pick a plan during the renewal flow.
+     */
+    public function listPublicPlans(): JsonResponse
+    {
+        $plans = Plan::where('is_active', true)
+            ->where('name', '!=', 'Free Trial')
+            ->orderBy('price_monthly')
+            ->get()
+            ->map(fn (Plan $plan) => array_merge($plan->toArray(), [
+                'modules' => $plan->resolvedModules(),
+            ]));
+
+        return response()->json($plans);
+    }
+
+    /**
+     * Submits a self-service renewal request.
+     *
+     * TODO: Replace with actual payment gateway flow.
+     * For now, this records the request by adding a note to the latest
+     * subscription so the superadmin can activate it manually.
+     */
+    public function renewalRequest(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'plan_id'       => ['required', 'exists:plans,id'],
+            'billing_cycle' => ['required', 'in:monthly,yearly'],
+        ]);
+
+        $plan = Plan::findOrFail($data['plan_id']);
+
+        // Record the request on the latest subscription (even if expired)
+        $sub = $user->subscriptions()->latest()->first();
+
+        if ($sub) {
+            $existing = $sub->notes ?? '';
+            $note = '[Renewal Requested: ' . now()->toDateTimeString() . '] '
+                  . 'Plan: ' . $plan->name . ' / Cycle: ' . $data['billing_cycle'];
+            $sub->update(['notes' => trim($existing . "\n" . $note)]);
+        }
+
+        return response()->json([
+            'message' => 'Renewal request submitted. A platform admin will activate your plan shortly.',
+        ]);
+    }
+
     // ── Helper ───────────────────────────────────────────────────────────────
 
     private function formatTenant(User $u): array
@@ -491,3 +568,4 @@ class AdminController
         ];
     }
 }
+

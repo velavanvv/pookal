@@ -8,6 +8,7 @@ use App\Models\BulkSaleItem;
 use App\Models\Farmer;
 use App\Models\FarmerDelivery;
 use App\Models\FarmerPayment;
+use App\Support\Tenancy\TenantSchemaManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -43,7 +44,7 @@ class VendorController
             'is_active'      => ['nullable', 'boolean'],
         ]);
         $farmer = Farmer::create(array_merge($data, ['user_id' => $this->uid($request)]));
-        return response()->json(['message' => 'Farmer added.', 'farmer' => $farmer], 201);
+        return response()->json(['message' => 'Supplier added.', 'farmer' => $farmer, 'supplier' => $farmer], 201);
     }
 
     public function updateFarmer(Request $request, Farmer $farmer): JsonResponse
@@ -113,8 +114,11 @@ class VendorController
         return response()->json($query->limit(200)->get()->map(fn ($d) => [
             'id'            => $d->id,
             'farmer_id'     => $d->farmer_id,
+            'supplier_id'   => $d->farmer_id,
             'farmer_name'   => $d->farmer->name,
-            'flower_type'   => $d->flower_type,
+            'supplier_name' => $d->farmer->name,
+            'item_name'     => $d->item_name,
+            'flower_type'   => $d->item_name,
             'quantity'      => $d->quantity,
             'unit'          => $d->unit,
             'rate_per_unit' => $d->rate_per_unit,
@@ -129,13 +133,22 @@ class VendorController
     {
         $data = $request->validate([
             'farmer_id'     => ['required', Rule::exists('tenant.farmers', 'id')],
-            'flower_type'   => ['required', 'string', 'max:80'],
+            'supplier_id'   => ['sometimes', Rule::exists('tenant.farmers', 'id')],
+            'item_name'     => ['required_without:flower_type', 'string', 'max:80'],
+            'flower_type'   => ['required_without:item_name', 'string', 'max:80'],
             'quantity'      => ['required', 'numeric', 'min:0.01'],
-            'unit'          => ['required', 'in:kg,bunch,stems,boxes,nos'],
+            'unit'          => ['required', 'in:kg,g,bunch,stems,boxes,nos,piece,dozen'],
             'rate_per_unit' => ['required', 'numeric', 'min:0'],
             'delivery_date' => ['required', 'date'],
             'quality_grade' => ['nullable', 'in:A,B,C'],
             'notes'         => ['nullable', 'string', 'max:300'],
+        ]);
+
+        $data['farmer_id'] = $data['farmer_id'] ?? $data['supplier_id'] ?? null;
+        $data['item_name'] = $data['item_name'] ?? $data['flower_type'];
+        unset($data['supplier_id']);
+        $data = TenantSchemaManager::syncLegacyColumns('farmer_deliveries', $data, [
+            'item_name' => 'flower_type',
         ]);
 
         // Verify farmer belongs to this user
@@ -312,7 +325,8 @@ class VendorController
             'due_date'      => ['nullable', 'date'],
             'notes'         => ['nullable', 'string', 'max:400'],
             'items'         => ['required', 'array', 'min:1'],
-            'items.*.flower_type'   => ['required', 'string', 'max:80'],
+            'items.*.item_name'     => ['nullable', 'string', 'max:80'],
+            'items.*.flower_type'   => ['nullable', 'string', 'max:80'],
             'items.*.quantity'      => ['required', 'numeric', 'min:0.01'],
             'items.*.unit'          => ['required', 'string'],
             'items.*.rate_per_unit' => ['required', 'numeric', 'min:0'],
@@ -341,14 +355,16 @@ class VendorController
         ]);
 
         foreach ($data['items'] as $item) {
-            BulkSaleItem::create([
+            $itemName = $item['item_name'] ?? $item['flower_type'] ?? null;
+            abort_if(! $itemName, 422, 'Each sale item requires item_name.');
+            BulkSaleItem::create(TenantSchemaManager::syncLegacyColumns('bulk_sale_items', [
                 'bulk_sale_id'  => $sale->id,
-                'flower_type'   => $item['flower_type'],
+                'item_name'     => $itemName,
                 'quantity'      => $item['quantity'],
                 'unit'          => $item['unit'],
                 'rate_per_unit' => $item['rate_per_unit'],
                 'total_amount'  => round($item['quantity'] * $item['rate_per_unit'], 2),
-            ]);
+            ]));
         }
 
         return response()->json(['message' => 'Bulk sale created.', 'sale' => $sale->load('items')], 201);

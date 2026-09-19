@@ -16,7 +16,7 @@ class TenantProvisioner
     ) {
     }
 
-    public function provisionMainDatabase(User $owner): TenantDatabase
+    public function provisionMainDatabase(User $owner, ?array $profileSettings = null): TenantDatabase
     {
         $database = TenantDatabase::updateOrCreate(
             [
@@ -36,7 +36,7 @@ class TenantProvisioner
 
         $this->connections->activate($database);
         $this->schema->ensureSchema();
-        $this->bootstrapSettings($owner);
+        $this->bootstrapSettings($owner, null, $profileSettings);
 
         return $database;
     }
@@ -64,7 +64,7 @@ class TenantProvisioner
         return $database;
     }
 
-    private function bootstrapSettings(User $owner, ?Branch $branch = null): void
+    private function bootstrapSettings(User $owner, ?Branch $branch = null, ?array $profileSettings = null): void
     {
         $settings = [
             'shop_name' => $branch?->name ?: ($owner->shop_name ?: $owner->name),
@@ -74,6 +74,9 @@ class TenantProvisioner
             'currency_symbol' => 'Rs.',
             'tax_rate' => '5',
             'website_enabled' => '0',
+            'default_units' => json_encode($profileSettings['default_units'] ?? ['piece']),
+            'default_categories' => json_encode($profileSettings['default_categories'] ?? ['General']),
+            'track_expiry_default' => ($profileSettings['track_expiry_default'] ?? false) ? '1' : '0',
         ];
 
         foreach ($settings as $key => $value) {

@@ -38,6 +38,7 @@ class StorefrontController
                     'price' => $product->price,
                     'unit' => $product->unit,
                     'image_url' => $product->image_url,
+                    'shelf_life_days' => $product->shelf_life_days ?? $product->freshness_days,
                     'freshness_days' => $product->freshness_days,
                     'stock' => $product->latestStock?->balance_after ?? 0,
                 ];
@@ -48,8 +49,8 @@ class StorefrontController
             'store' => [
                 'name' => $settings['shop_name'] ?? 'Pookal Store',
                 'tagline' => $settings['shop_tagline'] ?? 'Luxury blooms for meaningful celebrations.',
-                'banner_title' => $settings['website_banner_title'] ?? 'Send flowers beautifully',
-                'banner_subtitle' => $settings['website_banner_subtitle'] ?? 'A public storefront powered by your florist CRM.',
+                'banner_title' => $settings['website_banner_title'] ?? 'Shop online with us',
+                'banner_subtitle' => $settings['website_banner_subtitle'] ?? 'Browse products and place orders from our online storefront.',
                 'intro' => $settings['website_intro'] ?? '',
                 'primary_color' => $settings['website_primary_color'] ?? '#7d294a',
                 'secondary_color' => $settings['website_secondary_color'] ?? '#25543a',

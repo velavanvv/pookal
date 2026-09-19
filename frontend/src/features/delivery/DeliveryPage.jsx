@@ -67,27 +67,60 @@ export default function DeliveryPage() {
                       <span className="delivery-card__num">{order.order_number}</span>
                       <span className="delivery-card__slot">{order.slot}</span>
                     </div>
-                    <div className="delivery-card__customer">
-                      {order.customer_name || 'Walk-in'}
+                    <div className="delivery-card__customer" style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.88rem' }}>
+                      {order.customer_name || 'Customer'}
                     </div>
-                    {col.key === 'packed' && (
-                      <button
-                        className="pk-btn pk-btn--sm w-100 mt-2"
-                        style={{ background: '#2563eb', justifyContent: 'center' }}
-                        onClick={() => dispatch(order.order_id, 'dispatched')}
-                      >
-                        <i className="bi bi-truck" /> Dispatch
-                      </button>
+                    {order.customer_phone && (
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                        <i className="bi bi-telephone me-1" />{order.customer_phone}
+                      </div>
                     )}
-                    {col.key === 'dispatched' && (
-                      <button
-                        className="pk-btn pk-btn--sm w-100 mt-2"
-                        style={{ background: 'var(--c-green)', justifyContent: 'center' }}
-                        onClick={() => dispatch(order.order_id, 'delivered')}
-                      >
-                        <i className="bi bi-check-circle" /> Mark Delivered
-                      </button>
+                    {order.address && (
+                      <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '3px', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '4px' }}>
+                        <i className="bi bi-geo-alt me-1 text-danger" />{order.address}
+                      </div>
                     )}
+                    
+                    <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.6rem' }}>
+                      {order.customer_phone && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const p = (order.customer_phone || '').replace(/[^\d]/g, '');
+                            const msg = `Hello *${order.customer_name || 'Customer'}*,\nYour order *#${order.order_number || order.order_id}* is *${col.label}*! 🚚\nOur delivery team is on the way. Thank you for your order!`;
+                            window.open(`https://wa.me/${p}?text=${encodeURIComponent(msg)}`, '_blank');
+                          }}
+                          style={{
+                            flex: 1, padding: '0.35rem', borderRadius: '6px',
+                            background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0',
+                            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem'
+                          }}
+                          title="Send delivery tracking update via WhatsApp"
+                        >
+                          <i className="bi bi-whatsapp" /> Alert Customer
+                        </button>
+                      )}
+
+                      {col.key === 'packed' && (
+                        <button
+                          className="pk-btn pk-btn--sm"
+                          style={{ background: '#2563eb', flex: 1, justifyContent: 'center', padding: '0.35rem' }}
+                          onClick={() => dispatch(order.order_id, 'dispatched')}
+                        >
+                          <i className="bi bi-truck" /> Dispatch
+                        </button>
+                      )}
+                      {col.key === 'dispatched' && (
+                        <button
+                          className="pk-btn pk-btn--sm"
+                          style={{ background: '#16a34a', flex: 1, justifyContent: 'center', padding: '0.35rem' }}
+                          onClick={() => dispatch(order.order_id, 'delivered')}
+                        >
+                          <i className="bi bi-check-circle" /> Delivered
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

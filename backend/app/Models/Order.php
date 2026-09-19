@@ -13,12 +13,16 @@ class Order extends TenantModel
         'branch_id',
         'order_number',
         'customer_id',
+        'table_id',
         'channel',
+        'order_type',
         'status',
         'subtotal',
         'discount_total',
         'tax_total',
         'grand_total',
+        'payment_method',
+        'payments',
         'delivery_slot',
         'delivery_date',
         'delivery_time_slot',
@@ -31,7 +35,17 @@ class Order extends TenantModel
         'location_source',
         'location_captured_at',
         'gift_message',
+        'metadata',
         'notes',
+    ];
+
+    protected $casts = [
+        'subtotal'       => 'float',
+        'discount_total' => 'float',
+        'tax_total'      => 'float',
+        'grand_total'    => 'float',
+        'payments'       => 'array',
+        'metadata'       => 'array',
     ];
 
     public function customer()
@@ -47,5 +61,15 @@ class Order extends TenantModel
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function table()
+    {
+        return $this->belongsTo(RestaurantTable::class, 'table_id');
+    }
+
+    public function kitchenTickets()
+    {
+        return $this->hasMany(KitchenTicket::class);
     }
 }

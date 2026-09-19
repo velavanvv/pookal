@@ -5,17 +5,16 @@ import { useAuth } from '../../features/auth/AuthContext';
  * Shop routes are blocked for superadmin.
  * Superadmin is always redirected to /admin.
  */
-export default function ShopRoute({ children, requiredModule = null }) {
-  const { user } = useAuth();
+export default function ShopRoute({ children, requiredModule = null, requiredCapability = null }) {
+  const { user, hasCapability } = useAuth();
 
   if (user?.role === 'superadmin') {
     return <Navigate to="/admin" replace />;
   }
 
-  if (requiredModule) {
-    const modules = user?.subscription?.modules ?? null;
-
-    if (modules !== null && !modules.includes(requiredModule)) {
+  const check = requiredCapability || requiredModule;
+  if (check) {
+    if (!hasCapability(check)) {
       return <Navigate to="/dashboard" replace />;
     }
   }
