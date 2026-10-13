@@ -269,8 +269,15 @@ class OrderController
         $model->update($data);
 
         // If order completed or cancelled and has a table, mark table vacant
-        if (in_array($model->status, ['completed', 'cancelled'], true) && $model->table_id) {
-            RestaurantTable::where('id', $model->table_id)->update(['status' => 'vacant']);
+        if (in_array($model->status, ['completed', 'cancelled'], true)) {
+            if ($model->table_id) {
+                RestaurantTable::where('id', $model->table_id)->update(['status' => 'vacant']);
+            }
+            if ($model->status === 'completed') {
+                KitchenTicket::where('order_id', $model->id)
+                    ->whereIn('status', ['pending', 'preparing', 'ready'])
+                    ->update(['status' => 'served']);
+            }
         }
 
         return response()->json(['message' => "Order {$id} updated.", 'order' => $model]);

@@ -30,6 +30,17 @@ export default function RestaurantPage() {
   const [selectedKot, setSelectedKot] = useState(null);
   const kotPrintRef = useRef(null);
 
+  // Settle Bill Modal & Customer Receipt State
+  const [settleModal, setSettleModal] = useState({
+    open: false,
+    order: null,
+    table: null,
+    payMethod: 'cash',
+    cashTendered: '',
+    submitting: false,
+  });
+  const [settledReceipt, setSettledReceipt] = useState(null);
+
   const navigate = useNavigate();
 
   const handleSaveDish = async (e) => {
@@ -167,6 +178,55 @@ export default function RestaurantPage() {
     setTimeout(() => {
       window.print();
     }, 200);
+  };
+
+  const handleOpenSettle = async (orderOrId, table = null) => {
+    let orderObj = orderOrId;
+    if (!orderObj || typeof orderObj === 'number' || typeof orderObj === 'string' || !orderObj.items) {
+      const orderId = typeof orderOrId === 'object' ? orderOrId?.id : orderOrId;
+      if (orderId) {
+        try {
+          const res = await api.get('/orders');
+          const all = res.data?.data || res.data || [];
+          const found = all.find(o => String(o.id) === String(orderId));
+          if (found) orderObj = found;
+        } catch (e) {}
+      }
+    }
+    const total = orderObj?.grand_total ? Number(orderObj.grand_total) : 0;
+    setSettleModal({
+      open: true,
+      order: orderObj,
+      table: table || orderObj?.table || null,
+      payMethod: 'cash',
+      cashTendered: total > 0 ? String(total) : '',
+      submitting: false,
+    });
+  };
+
+  const handleConfirmSettle = async () => {
+    if (!settleModal.order) return;
+    setSettleModal(prev => ({ ...prev, submitting: true }));
+    try {
+      const orderId = settleModal.order.id;
+      const res = await api.patch(`/orders/${orderId}`, {
+        status: 'completed',
+        payment_method: settleModal.payMethod,
+      });
+
+      const finalOrder = res.data?.order || settleModal.order;
+      setSettledReceipt({
+        order: { ...settleModal.order, ...finalOrder, status: 'completed', payment_method: settleModal.payMethod },
+        table: settleModal.table,
+        timestamp: new Date().toLocaleString('en-IN'),
+      });
+
+      setSettleModal({ open: false, order: null, table: null, payMethod: 'cash', cashTendered: '', submitting: false });
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to settle order');
+      setSettleModal(prev => ({ ...prev, submitting: false }));
+    }
   };
 
   const handleSaveModifier = async (e) => {
@@ -436,12 +496,23 @@ export default function RestaurantPage() {
                       </div>
 
                       <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '0.75rem', marginTop: '1rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        {tbl.active_order ? (
+                          <button
+                            className="pk-btn pk-btn--success pk-btn--sm"
+                            style={{ flex: 1, fontWeight: 700 }}
+                            onClick={() => handleOpenSettle(tbl.active_order, tbl)}
+                            title="Collect payment and free table"
+                          >
+                            <i className="bi bi-wallet2 me-1" /> Settle Bill (Rs. {Number(tbl.active_order.grand_total).toLocaleString()})
+                          </button>
+                        ) : null}
+
                         <button
-                          className="pk-btn pk-btn--primary pk-btn--sm"
-                          style={{ flex: 1 }}
+                          className={`pk-btn ${tbl.active_order ? 'pk-btn--outline' : 'pk-btn--primary'} pk-btn--sm`}
+                          style={{ flex: tbl.active_order ? 'none' : 1 }}
                           onClick={() => navigate('/pos', { state: { tableId: tbl.id, tableName: tbl.name } })}
                         >
-                          <i className="bi bi-receipt me-1" /> Open POS
+                          <i className="bi bi-receipt me-1" /> POS
                         </button>
                         
                         <select
@@ -534,7 +605,7 @@ export default function RestaurantPage() {
                         ))}
                       </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem', gap: '0.4rem', flexWrap: 'wrap' }}>
                         <button
                           className="pk-btn pk-btn--outline pk-btn--sm"
                           onClick={() => handlePrintKot(kot)}
@@ -542,16 +613,35 @@ export default function RestaurantPage() {
                           <i className="bi bi-printer me-1" /> Print KOT
                         </button>
 
-                        {(isPending || isPreparing || isReady) && (
-                          <button
-                            className={`pk-btn pk-btn--${isPending ? 'primary' : isPreparing ? 'success' : 'outline'} pk-btn--sm`}
-                            onClick={() => handleAdvanceKot(kot.id, kot.status)}
-                          >
-                            {isPending && <><i className="bi bi-play-fill me-1" /> Start Prep</>}
-                            {isPreparing && <><i className="bi bi-check2-circle me-1" /> Mark Ready</>}
-                            {isReady && <><i className="bi bi-arrow-right-circle me-1" /> Mark Served</>}
-                          </button>
-                        )}
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                          {(isPending || isPreparing || isReady) && (
+                            <button
+                              className={`pk-btn pk-btn--${isPending ? 'primary' : isPreparing ? 'success' : 'outline'} pk-btn--sm`}
+                              onClick={() => handleAdvanceKot(kot.id, kot.status)}
+                            >
+                              {isPending && <><i className="bi bi-play-fill me-1" /> Start Prep</>}
+                              {isPreparing && <><i className="bi bi-check2-circle me-1" /> Mark Ready</>}
+                              {isReady && <><i className="bi bi-arrow-right-circle me-1" /> Mark Served</>}
+                            </button>
+                          )}
+
+                          {kot.order && (
+                            kot.order.status === 'completed' ? (
+                              <span className="pk-badge pk-badge--success" style={{ fontSize: '0.78rem' }}>
+                                <i className="bi bi-check-circle-fill me-1" /> Paid
+                              </span>
+                            ) : (
+                              <button
+                                className="pk-btn pk-btn--success pk-btn--sm"
+                                style={{ fontWeight: 700 }}
+                                onClick={() => handleOpenSettle(kot.order, kot.table)}
+                                title="Collect payment and complete bill"
+                              >
+                                <i className="bi bi-wallet2 me-1" /> Settle (Rs. {Number(kot.order.grand_total).toLocaleString()})
+                              </button>
+                            )
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -991,6 +1081,193 @@ export default function RestaurantPage() {
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SETTLE BILL & PAYMENT MODAL ── */}
+      {settleModal.open && settleModal.order && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '480px' }}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title" style={{ fontSize: '1.05rem', fontWeight: 800 }}>
+                  <i className="bi bi-receipt-cutoff me-2 text-success" /> Settle Customer Bill
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setSettleModal({ ...settleModal, open: false })} />
+              </div>
+              <div className="modal-body">
+                {/* Header Details */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 'var(--radius-sm)', padding: '0.75rem', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{settleModal.order.order_number}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                      {settleModal.table ? `📍 ${settleModal.table.name}` : '🥡 Takeaway / Dine-in'} · Guest: {settleModal.order.customer?.name || 'Walk-in'}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.72rem', color: '#6b7280', textTransform: 'uppercase' }}>Amount to Pay</div>
+                    <div style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--pookal-rose)' }}>
+                      Rs. {Number(settleModal.order.grand_total).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Summary */}
+                <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid #f1f5f9', borderRadius: 'var(--radius-sm)', padding: '0.6rem', marginBottom: '1rem', fontSize: '0.82rem' }}>
+                  <div style={{ fontWeight: 600, color: '#475569', marginBottom: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.2rem' }}>
+                    Ordered Items Summary
+                  </div>
+                  {Array.isArray(settleModal.order.items) && settleModal.order.items.map((it, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                      <span>{it.qty} × {it.product?.name || it.name || `Item #${it.product_id}`}</span>
+                      <span style={{ fontWeight: 600 }}>Rs. {Number(it.line_total || (it.qty * it.unit_price)).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Payment Method Selector */}
+                <label className="form-label fw-bold" style={{ fontSize: '0.82rem' }}>Payment Method Received</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem', marginBottom: '1rem' }}>
+                  {[
+                    { id: 'cash', icon: 'bi-cash-stack', label: 'Cash' },
+                    { id: 'upi', icon: 'bi-qr-code', label: 'UPI QR' },
+                    { id: 'card', icon: 'bi-credit-card', label: 'Card' },
+                  ].map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={`pk-btn ${settleModal.payMethod === m.id ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                      style={{ flexDirection: 'column', gap: '0.2rem', padding: '0.5rem 0.25rem', fontSize: '0.78rem' }}
+                      onClick={() => setSettleModal({ ...settleModal, payMethod: m.id })}
+                    >
+                      <i className={`bi ${m.icon}`} style={{ fontSize: '1.2rem' }} />
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Cash Tendered & Change Due */}
+                {settleModal.payMethod === 'cash' && (
+                  <div style={{ background: '#f9fafb', padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid #e5e7eb', marginBottom: '0.5rem' }}>
+                    <label className="form-label fw-bold" style={{ fontSize: '0.8rem' }}>Cash Tendered by Customer (Rs.)</label>
+                    <input
+                      type="number"
+                      className="form-control mb-2"
+                      placeholder={String(settleModal.order.grand_total)}
+                      value={settleModal.cashTendered}
+                      onChange={e => setSettleModal({ ...settleModal, cashTendered: e.target.value })}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', fontWeight: 700 }}>
+                      <span>Change to Return:</span>
+                      <span style={{ color: (parseFloat(settleModal.cashTendered) || 0) >= Number(settleModal.order.grand_total) ? '#16a34a' : '#6b7280' }}>
+                        Rs. {Math.max(0, (parseFloat(settleModal.cashTendered) || 0) - Number(settleModal.order.grand_total)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* UPI QR Guidance */}
+                {settleModal.payMethod === 'upi' && (
+                  <div style={{ background: '#eff6ff', padding: '0.85rem', borderRadius: 'var(--radius-sm)', border: '1px solid #bfdbfe', textAlign: 'center', marginBottom: '0.5rem' }}>
+                    <i className="bi bi-qr-code-scan" style={{ fontSize: '2.5rem', color: '#2563eb', display: 'block', marginBottom: '0.25rem' }} />
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>Customer paid via UPI (GPay / PhonePe / Paytm)</div>
+                    <small style={{ color: '#4b5563' }}>Confirm soundbox or SMS alert before completing settlement</small>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="pk-btn pk-btn--outline" onClick={() => setSettleModal({ ...settleModal, open: false })}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="pk-btn pk-btn--success"
+                  style={{ fontWeight: 700 }}
+                  disabled={settleModal.submitting}
+                  onClick={handleConfirmSettle}
+                >
+                  {settleModal.submitting ? 'Settling...' : '💳 Confirm Payment & Close Order'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SETTLED RECEIPT POPUP (PRINTABLE CUSTOMER BILL) ── */}
+      {settledReceipt && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered" style={{ maxWidth: '420px' }}>
+            <div className="modal-content">
+              <div className="modal-header" style={{ background: '#f0fdf4' }}>
+                <h5 className="modal-title text-success" style={{ fontSize: '1rem', fontWeight: 800 }}>
+                  <i className="bi bi-check-circle-fill me-2" /> Payment Received &amp; Settled!
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setSettledReceipt(null)} />
+              </div>
+              <div className="modal-body text-center" style={{ padding: '1.25rem' }}>
+                <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#16a34a', marginBottom: '0.2rem' }}>
+                  Rs. {Number(settledReceipt.order.grand_total).toLocaleString()}
+                </div>
+                <span className="pk-badge pk-badge--success" style={{ textTransform: 'uppercase', marginBottom: '0.8rem' }}>
+                  Paid via {settledReceipt.order.payment_method}
+                </span>
+                <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: '0.5rem 0' }}>
+                  Order <strong>{settledReceipt.order.order_number}</strong> is now marked completed.<br />
+                  {settledReceipt.table ? `Dining Table "${settledReceipt.table.name}" has been freed to VACANT.` : ''}
+                </p>
+
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                  <button
+                    className="pk-btn pk-btn--primary flex-fill"
+                    onClick={() => {
+                      window.print();
+                    }}
+                  >
+                    <i className="bi bi-printer me-1" /> Print Guest Bill
+                  </button>
+                  <button
+                    className="pk-btn pk-btn--outline flex-fill"
+                    onClick={() => setSettledReceipt(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PRINT LAYOUT FOR GUEST BILL ── */}
+      {settledReceipt && (
+        <div className="d-none d-print-block" style={{ width: '80mm', margin: '0 auto', fontFamily: 'monospace', fontSize: '12px' }}>
+          <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '6px' }}>
+            <h3 style={{ margin: '0 0 2px', fontSize: '18px' }}>*** TAX INVOICE ***</h3>
+            <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Restaurant / Dining</div>
+            <div>Bill: <strong>{settledReceipt.order.order_number}</strong></div>
+            {settledReceipt.table && <div>Table: <strong>{settledReceipt.table.name}</strong></div>}
+            <div>Date: {settledReceipt.timestamp}</div>
+            <div>Mode: <strong>PAID ({settledReceipt.order.payment_method?.toUpperCase()})</strong></div>
+          </div>
+          <div style={{ padding: '8px 0', borderBottom: '1px dashed #000' }}>
+            {Array.isArray(settledReceipt.order.items) && settledReceipt.order.items.map((it, idx) => (
+              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>{it.qty} × {it.product?.name || it.name || `Item #${it.product_id}`}</span>
+                <span>Rs. {Number(it.line_total || (it.qty * it.unit_price)).toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: '6px 0', borderBottom: '1px dashed #000', textAlign: 'right' }}>
+            <div>Subtotal: Rs. {Number(settledReceipt.order.subtotal || 0).toFixed(2)}</div>
+            <div>Tax (5%): Rs. {Number(settledReceipt.order.tax_total || 0).toFixed(2)}</div>
+            <div style={{ fontSize: '16px', fontWeight: 'bold', marginTop: '4px' }}>
+              TOTAL: Rs. {Number(settledReceipt.order.grand_total || 0).toFixed(2)}
+            </div>
+          </div>
+          <div style={{ textAlign: 'center', paddingTop: '8px', fontSize: '11px' }}>
+            *** THANK YOU! VISIT AGAIN ***
           </div>
         </div>
       )}

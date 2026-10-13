@@ -93,7 +93,7 @@ class RestaurantController
     public function listKitchenTickets(Request $request): JsonResponse
     {
         $query = KitchenTicket::query()
-            ->with(['order.customer', 'table'])
+            ->with(['order.customer', 'order.items.product', 'table'])
             ->latest();
 
         if ($status = $request->query('status')) {
