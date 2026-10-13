@@ -146,10 +146,15 @@ class OrderController
         // Stock check
         $stockErrors = [];
         foreach ($data['items'] as $item) {
+            $product = Product::find($item['product_id']);
+            // Dishes and services are made-to-order and do not have rigid physical stock balances
+            if ($product && ($product->item_type === 'dish' || $product->pricing_mode === 'service')) {
+                continue;
+            }
+
             $latest  = StockLedger::where('product_id', $item['product_id'])->latest()->first();
             $balance = $latest ? $latest->balance_after : 0;
             if ($item['qty'] > $balance) {
-                $product       = Product::find($item['product_id']);
                 $stockErrors[] = ($product?->name ?? "Product #{$item['product_id']}")
                     . ": requested {$item['qty']}, available {$balance}";
             }

@@ -9,6 +9,8 @@ import { usePwaInstall } from '../../hooks/usePwaInstall';
 import { useOrderAlerts } from '../../hooks/useOrderAlerts';
 import OrderAlertBanner from '../common/OrderAlertBanner';
 import GlobalVoiceAssistant from '../common/GlobalVoiceAssistant';
+import AiCopilotWidget from '../common/AiCopilotWidget';
+
 
 export default function AppShell() {
   const { user } = useAuth();
@@ -108,6 +110,10 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Floating AI Business Copilot Widget */}
+      <AiCopilotWidget />
     </div>
   );
 }
+

@@ -17,11 +17,24 @@ use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StorefrontController;
 use App\Http\Controllers\Api\WebsiteConfigController;
 use App\Http\Controllers\Api\VoiceController;
+use App\Http\Controllers\Api\AiController;
 use App\Http\Middleware\ResolveTenantContext;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'Pookal']));
 Route::get('/shop-types', [AuthController::class, 'shopTypes']);
+
+// ── Python AI Microservice Bridge ───────────────────────────
+Route::prefix('ai')->group(function () {
+    Route::get('/health', [AiController::class, 'health']);
+    Route::get('/models', [AiController::class, 'models']);
+    Route::get('/models/routes', [AiController::class, 'routes']);
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/invoice/parse', [AiController::class, 'parseInvoice']);
+        Route::post('/invoice/intake', [AiController::class, 'intakeInvoice']);
+        Route::post('/copilot/chat',  [AiController::class, 'copilotChat']);
+    });
+});
 
 // ── Native Tamil Voice Agent (Vela - வேலா) & AI Voice Tool Endpoints ──────
 Route::prefix('voice')->group(function () {

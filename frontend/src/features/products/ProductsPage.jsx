@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   sku: '',
   barcode: '',
   category: '',
+  item_type: 'product',
   price: '',
   pricing_mode: 'fixed',
   unit: 'piece',
@@ -22,7 +23,7 @@ const EMPTY_FORM = {
   freshness_days: '',
 };
 
-const TEMPLATE_COLUMNS = ['name', 'sku', 'barcode', 'category', 'price', 'pricing_mode', 'unit', 'reorder_level', 'initial_stock', 'track_expiry', 'shelf_life_days', 'image_url'];
+const TEMPLATE_COLUMNS = ['name', 'sku', 'barcode', 'category', 'item_type', 'price', 'pricing_mode', 'unit', 'reorder_level', 'initial_stock', 'track_expiry', 'shelf_life_days', 'image_url'];
 
 export default function ProductsPage() {
   const { t } = useI18n();
@@ -34,6 +35,7 @@ export default function ProductsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [importRows, setImportRows] = useState([]);
   const [importName, setImportName] = useState('');
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'dish' | 'raw_material' | 'product'
 
   const loadProducts = () =>
     api.get('/catalog/products?per_page=250')
@@ -46,14 +48,14 @@ export default function ProductsPage() {
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return products;
-
-    return products.filter((product) =>
-      [product.name, product.sku, product.barcode, product.category, product.unit]
+    return products.filter((product) => {
+      const matchesSearch = !term || [product.name, product.sku, product.barcode, product.category, product.unit]
         .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(term))
-    );
-  }, [products, search]);
+        .some((value) => value.toLowerCase().includes(term));
+      const matchesTab = activeTab === 'all' || (product.item_type || 'product') === activeTab;
+      return matchesSearch && matchesTab;
+    });
+  }, [products, search, activeTab]);
 
   const setField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -67,6 +69,7 @@ export default function ProductsPage() {
         sku: form.sku.trim(),
         barcode: form.barcode?.trim() || null,
         category: form.category.trim(),
+        item_type: form.item_type || 'product',
         price: Number(form.price),
         pricing_mode: form.pricing_mode || 'fixed',
         unit: form.unit.trim() || null,
@@ -75,9 +78,9 @@ export default function ProductsPage() {
         image_url: form.image_url.trim() || null,
         tax_category: form.tax_category || 'standard',
         track_expiry: form.track_expiry || form.track_freshness,
-        shelf_life_days: (form.track_expiry || form.track_freshness) && (form.shelf_life_days || form.freshness_days) !== '' ? Number(form.shelf_life_days || form.freshness_days) : null,
+        shelf_life_days: (form.track_expiry || form.track_freshness) && (form.shelf_life_days || form.freshness_days) !== '' ? Number(form.shelf_life_days || form.freshness_days) : 0,
         track_freshness: form.track_expiry || form.track_freshness,
-        freshness_days: (form.track_expiry || form.track_freshness) && (form.shelf_life_days || form.freshness_days) !== '' ? Number(form.shelf_life_days || form.freshness_days) : null,
+        freshness_days: (form.track_expiry || form.track_freshness) && (form.shelf_life_days || form.freshness_days) !== '' ? Number(form.shelf_life_days || form.freshness_days) : 0,
       });
 
       setForm(EMPTY_FORM);
@@ -101,20 +104,30 @@ export default function ProductsPage() {
       return null;
     }
 
+    const cat = String(normalized.category || '').toLowerCase();
+    const inferredType = normalized.item_type 
+      ? String(normalized.item_type).toLowerCase() 
+      : (['starters', 'main course', 'beverages', 'desserts', 'quick bites', 'combos', 'dish'].includes(cat) 
+        ? 'dish' 
+        : (['raw material', 'raw_material', 'ingredient', 'grains', 'spices', 'produce'].includes(cat) 
+          ? 'raw_material' 
+          : 'product'));
+
     return {
       name: String(normalized.name),
       sku: String(normalized.sku),
       barcode: normalized.barcode ? String(normalized.barcode) : null,
       category: String(normalized.category),
+      item_type: inferredType,
       price: Number(normalized.price),
       pricing_mode: normalized.pricing_mode ? String(normalized.pricing_mode) : 'fixed',
       unit: normalized.unit ? String(normalized.unit) : 'piece',
       reorder_level: normalized.reorder_level === undefined || normalized.reorder_level === '' ? 0 : Number(normalized.reorder_level),
       initial_stock: normalized.initial_stock === undefined || normalized.initial_stock === '' ? 0 : Number(normalized.initial_stock),
       track_expiry: ['1', 'true', 'yes', 'y'].includes(String(normalized.track_expiry ?? normalized.track_freshness ?? '').toLowerCase()),
-      shelf_life_days: (normalized.shelf_life_days ?? normalized.freshness_days) === undefined || (normalized.shelf_life_days ?? normalized.freshness_days) === '' ? null : Number(normalized.shelf_life_days ?? normalized.freshness_days),
+      shelf_life_days: (normalized.shelf_life_days ?? normalized.freshness_days) === undefined || (normalized.shelf_life_days ?? normalized.freshness_days) === '' ? 0 : Number(normalized.shelf_life_days ?? normalized.freshness_days),
       track_freshness: ['1', 'true', 'yes', 'y'].includes(String(normalized.track_expiry ?? normalized.track_freshness ?? '').toLowerCase()),
-      freshness_days: (normalized.shelf_life_days ?? normalized.freshness_days) === undefined || (normalized.shelf_life_days ?? normalized.freshness_days) === '' ? null : Number(normalized.shelf_life_days ?? normalized.freshness_days),
+      freshness_days: (normalized.shelf_life_days ?? normalized.freshness_days) === undefined || (normalized.shelf_life_days ?? normalized.freshness_days) === '' ? 0 : Number(normalized.shelf_life_days ?? normalized.freshness_days),
       image_url: normalized.image_url ? String(normalized.image_url) : null,
     };
   };
@@ -194,6 +207,14 @@ export default function ProductsPage() {
                 <div className="pk-field"><label>SKU *</label><input className="pk-input" value={form.sku} onChange={(e) => setField('sku', e.target.value)} required /></div>
                 <div className="pk-field"><label>Barcode / EAN</label><input className="pk-input" value={form.barcode} onChange={(e) => setField('barcode', e.target.value)} placeholder="Scanned barcode…" /></div>
                 <div className="pk-field"><label>Category *</label><input className="pk-input" value={form.category} onChange={(e) => setField('category', e.target.value)} required /></div>
+                <div className="pk-field">
+                  <label>Item Type</label>
+                  <select className="pk-input" value={form.item_type} onChange={(e) => setField('item_type', e.target.value)}>
+                    <option value="product">Retail Product / Goods</option>
+                    <option value="dish">Prepared Dish (Menu Item)</option>
+                    <option value="raw_material">Raw Material (Inventory)</option>
+                  </select>
+                </div>
                 <div className="pk-field">
                   <label>Pricing Mode</label>
                   <select className="pk-input" value={form.pricing_mode} onChange={(e) => setField('pricing_mode', e.target.value)}>
@@ -296,8 +317,40 @@ export default function ProductsPage() {
       </div>
 
       <div className="pk-card" style={{ marginTop: '1.25rem' }}>
-        <div className="pk-card__head">
-          <div className="pk-card__title">{t('productCatalog')}</div>
+        <div className="pk-card__head" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <div className="pk-card__title">{t('productCatalog')}</div>
+            <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
+              <button
+                type="button"
+                className={`pk-btn pk-btn--sm ${activeTab === 'all' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                onClick={() => setActiveTab('all')}
+              >
+                All ({products.length})
+              </button>
+              <button
+                type="button"
+                className={`pk-btn pk-btn--sm ${activeTab === 'dish' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                onClick={() => setActiveTab('dish')}
+              >
+                Dishes / Menu ({products.filter(p => p.item_type === 'dish').length})
+              </button>
+              <button
+                type="button"
+                className={`pk-btn pk-btn--sm ${activeTab === 'raw_material' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                onClick={() => setActiveTab('raw_material')}
+              >
+                Raw Materials ({products.filter(p => p.item_type === 'raw_material').length})
+              </button>
+              <button
+                type="button"
+                className={`pk-btn pk-btn--sm ${activeTab === 'product' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                onClick={() => setActiveTab('product')}
+              >
+                Retail ({products.filter(p => !p.item_type || p.item_type === 'product').length})
+              </button>
+            </div>
+          </div>
           <div className="pk-search" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <i className="bi bi-search" />
             <input
@@ -323,6 +376,7 @@ export default function ProductsPage() {
                   <th>{t('sku')} / {t('barcode')}</th>
                   <th>{t('productName')}</th>
                   <th>{t('category')}</th>
+                  <th>Type</th>
                   <th>{t('pricingMode')}</th>
                   <th>{t('price')}</th>
                   <th>{t('stock')}</th>
@@ -338,16 +392,21 @@ export default function ProductsPage() {
                     <td style={{ fontWeight: 600 }}>{product.name}</td>
                     <td>{product.category}</td>
                     <td>
-                      <span className="pk-badge pk-badge--info" style={{ fontSize: '0.72rem' }}>
-                        {product.pricing_mode === 'weight' ? 'Weight-based' : 'Fixed'}
+                      <span className={`pk-badge ${product.item_type === 'dish' ? 'pk-badge--rose' : product.item_type === 'raw_material' ? 'pk-badge--warning' : 'pk-badge--info'}`} style={{ fontSize: '0.72rem' }}>
+                        {product.item_type === 'dish' ? '🍽️ Dish' : product.item_type === 'raw_material' ? '🌾 Raw Material' : '📦 Retail'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="pk-badge pk-badge--gray" style={{ fontSize: '0.72rem' }}>
+                        {product.pricing_mode === 'weight' ? 'Weight-based' : product.pricing_mode === 'service' ? 'Service' : 'Fixed'}
                       </span>
                     </td>
                     <td>Rs. {Number(product.price).toLocaleString()} <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>/{product.unit || 'unit'}</span></td>
-                    <td>{product.stock ?? 0}</td>
+                    <td>{product.item_type === 'dish' ? <span style={{ color: '#16a34a', fontSize: '0.75rem' }}>Fresh made</span> : (product.stock ?? 0)}</td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr className="pk-table__empty"><td colSpan={6}>No products found.</td></tr>
+                  <tr className="pk-table__empty"><td colSpan={7}>No products found.</td></tr>
                 )}
               </tbody>
             </table>

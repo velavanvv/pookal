@@ -21,13 +21,14 @@ class TenantSchemaManager
                 $table->string('sku')->unique();
                 $table->string('barcode')->nullable()->index();
                 $table->string('category');
+                $table->string('item_type')->default('product'); // product | dish | raw_material
                 $table->decimal('price', 10, 2);
                 $table->string('pricing_mode')->default('fixed'); // fixed | weight
                 $table->string('unit')->default('piece');
                 $table->unsignedInteger('reorder_level')->default(0);
                 $table->boolean('track_expiry')->default(false);
                 $table->string('image_url')->nullable();
-                $table->unsignedSmallInteger('shelf_life_days')->default(3);
+                $table->unsignedSmallInteger('shelf_life_days')->default(0)->nullable();
                 $table->string('tax_category')->default('standard');
                 $table->json('attributes')->nullable();
                 $table->timestamps();
@@ -311,6 +312,12 @@ class TenantSchemaManager
             if (! $schema->hasColumn('products', 'attributes')) {
                 $schema->table('products', function (Blueprint $table) {
                     $table->json('attributes')->nullable()->after('tax_category');
+                });
+            }
+
+            if (! $schema->hasColumn('products', 'item_type')) {
+                $schema->table('products', function (Blueprint $table) {
+                    $table->string('item_type')->default('product')->after('category');
                 });
             }
         }

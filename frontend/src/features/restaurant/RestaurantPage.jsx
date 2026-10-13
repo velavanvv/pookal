@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -20,11 +20,63 @@ export default function RestaurantPage() {
   const [showModModal, setShowModModal] = useState(false);
   const [modForm, setModForm] = useState({ product_id: '', name: '', price_delta: 0, is_required: false, options: '' });
 
+  // Dish Modal & Category Rates
+  const [showDishModal, setShowDishModal] = useState(false);
+  const [editingDish, setEditingDish] = useState(null);
+  const [dishForm, setDishForm] = useState({ name: '', sku: '', category: 'Main Course', price: '', unit: 'plate', image_url: '' });
+  const [dishFilterCat, setDishFilterCat] = useState('All');
+
   // Thermal KOT print ref
   const [selectedKot, setSelectedKot] = useState(null);
   const kotPrintRef = useRef(null);
 
   const navigate = useNavigate();
+
+  const handleSaveDish = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingDish) {
+        await api.patch(`/catalog/products/${editingDish.id}`, {
+          name: dishForm.name,
+          category: dishForm.category,
+          price: parseFloat(dishForm.price),
+          unit: dishForm.unit,
+          item_type: 'dish',
+          image_url: dishForm.image_url || null,
+        });
+      } else {
+        const sku = dishForm.sku.trim() || ('DISH-' + Date.now().toString().slice(-6));
+        await api.post('/catalog/products', {
+          name: dishForm.name,
+          sku: sku,
+          category: dishForm.category,
+          price: parseFloat(dishForm.price),
+          pricing_mode: 'fixed',
+          unit: dishForm.unit || 'plate',
+          item_type: 'dish',
+          reorder_level: 0,
+          shelf_life_days: 0,
+          image_url: dishForm.image_url || null,
+        });
+      }
+      setShowDishModal(false);
+      setEditingDish(null);
+      setDishForm({ name: '', sku: '', category: 'Main Course', price: '', unit: 'plate', image_url: '' });
+      loadData();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Error saving dish');
+    }
+  };
+
+  const handleDeleteDish = async (dishId) => {
+    if (!window.confirm('Are you sure you want to delete this dish?')) return;
+    try {
+      await api.delete(`/catalog/products/${dishId}`);
+      loadData();
+    } catch (err) {
+      alert('Failed to delete dish');
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -170,6 +222,35 @@ export default function RestaurantPage() {
     );
   };
 
+  const dishes = useMemo(() => {
+    return products.filter(p => p.item_type === 'dish' || ['starters', 'main course', 'beverages', 'desserts', 'quick bites', 'combos', 'breads', 'rice & biryani'].includes((p.category || '').toLowerCase()));
+  }, [products]);
+
+  const dishCategories = useMemo(() => {
+    return ['All', ...new Set(dishes.map(d => d.category).filter(Boolean))];
+  }, [dishes]);
+
+  const filteredDishes = useMemo(() => {
+    return dishFilterCat === 'All' ? dishes : dishes.filter(d => d.category === dishFilterCat);
+  }, [dishes, dishFilterCat]);
+
+  const categoryStats = useMemo(() => {
+    const map = {};
+    dishes.forEach(d => {
+      const cat = d.category || 'Other';
+      if (!map[cat]) map[cat] = { count: 0, prices: [] };
+      map[cat].count++;
+      map[cat].prices.push(Number(d.price) || 0);
+    });
+    return Object.entries(map).map(([cat, info]) => ({
+      category: cat,
+      count: info.count,
+      minPrice: Math.min(...info.prices),
+      maxPrice: Math.max(...info.prices),
+      avgPrice: Math.round(info.prices.reduce((a, b) => a + b, 0) / info.prices.length),
+    }));
+  }, [dishes]);
+
   return (
     <div>
       {/* Header */}
@@ -205,6 +286,27 @@ export default function RestaurantPage() {
           >
             <i className="bi bi-plus-lg me-1" /> Add Modifier
           </button>
+        )}
+
+        {activeTab === 'menu' && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              className="pk-btn pk-btn--primary"
+              onClick={() => {
+                setEditingDish(null);
+                setDishForm({ name: '', sku: '', category: 'Main Course', price: '', unit: 'plate', image_url: '' });
+                setShowDishModal(true);
+              }}
+            >
+              <i className="bi bi-plus-lg me-1" /> Add New Dish
+            </button>
+            <button
+              className="pk-btn pk-btn--outline"
+              onClick={() => navigate('/pos')}
+            >
+              <i className="bi bi-calculator me-1" /> Open POS Billing
+            </button>
+          </div>
         )}
       </div>
 
@@ -243,7 +345,7 @@ export default function RestaurantPage() {
       )}
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color, #e5e7eb)', marginBottom: '1.25rem', paddingBottom: '0.25rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid var(--border-color, #e5e7eb)', marginBottom: '1.25rem', paddingBottom: '0.25rem', flexWrap: 'wrap' }}>
         <button
           className={`pk-btn ${activeTab === 'floor' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
           style={{ borderRadius: 'var(--radius-sm)' }}
@@ -264,6 +366,13 @@ export default function RestaurantPage() {
           onClick={() => setActiveTab('modifiers')}
         >
           <i className="bi bi-sliders me-1" /> Menu Modifiers ({modifiers.length})
+        </button>
+        <button
+          className={`pk-btn ${activeTab === 'menu' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+          style={{ borderRadius: 'var(--radius-sm)' }}
+          onClick={() => setActiveTab('menu')}
+        >
+          <i className="bi bi-book-half me-1" /> Dishes & Category Rates ({dishes.length})
         </button>
       </div>
 
@@ -509,6 +618,154 @@ export default function RestaurantPage() {
               </div>
             </div>
           )}
+
+          {/* ── TAB 4: DISHES & CATEGORY RATES ── */}
+          {activeTab === 'menu' && (
+            <div>
+              {/* Category Rates Summary Cards */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h6 style={{ fontWeight: 700, color: '#374151', margin: 0 }}>
+                    <i className="bi bi-tags-fill me-1" style={{ color: '#ec4899' }} /> Category Rates &amp; Tiers Overview
+                  </h6>
+                  <button
+                    className="pk-btn pk-btn--sm pk-btn--primary"
+                    onClick={() => {
+                      setEditingDish(null);
+                      setDishForm({ name: '', sku: '', category: 'Main Course', price: '', unit: 'plate', image_url: '' });
+                      setShowDishModal(true);
+                    }}
+                  >
+                    <i className="bi bi-plus-lg me-1" /> Add New Dish
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
+                  {categoryStats.map(stat => (
+                    <div key={stat.category} className="pk-card" style={{ padding: '0.85rem 1rem', borderLeft: '4px solid #ec4899' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>{stat.category}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.2rem' }}>{stat.count} dishes active</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', borderTop: '1px dashed #e5e7eb', paddingTop: '0.35rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#4b5563' }}>Avg: <strong>Rs. {stat.avgPrice}</strong></span>
+                        <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>Rs. {stat.minPrice} - {stat.maxPrice}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {categoryStats.length === 0 && (
+                    <div style={{ color: '#9ca3af', fontSize: '0.85rem', fontStyle: 'italic', gridColumn: '1 / -1', padding: '1rem', background: '#fff', borderRadius: 'var(--radius-sm)' }}>
+                      No dishes added yet. Click "Add New Dish" above to create dishes with rates and categories.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Dishes List & Controls */}
+              <div className="pk-card">
+                <div className="pk-card__head" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="pk-card__title">Restaurant Menu Items ({dishes.length})</div>
+                    <span className="pk-badge pk-badge--rose">Kitchen Ready</span>
+                  </div>
+
+                  {/* Filter by Category */}
+                  <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', marginLeft: 'auto' }}>
+                    {dishCategories.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        className={`pk-btn pk-btn--sm ${dishFilterCat === cat ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                        style={{ borderRadius: '9999px', fontSize: '0.75rem', padding: '0.15rem 0.6rem' }}
+                        onClick={() => setDishFilterCat(cat)}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pk-card__body" style={{ padding: 0 }}>
+                  <table className="pk-table">
+                    <thead>
+                      <tr>
+                        <th>Dish Name &amp; SKU</th>
+                        <th>Category</th>
+                        <th>Rate / Price</th>
+                        <th>Portion Unit</th>
+                        <th>Modifiers</th>
+                        <th style={{ width: 120 }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredDishes.length === 0 ? (
+                        <tr className="pk-table__empty">
+                          <td colSpan={6}>No dishes found in this category. Click "Add New Dish" to create one.</td>
+                        </tr>
+                      ) : (
+                        filteredDishes.map(dish => {
+                          const dishMods = modifiers.filter(m => m.product_id === dish.id);
+                          return (
+                            <tr key={dish.id}>
+                              <td>
+                                <div style={{ fontWeight: 600, color: '#111827' }}>{dish.name}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#6b7280', fontFamily: 'monospace' }}>{dish.sku}</div>
+                              </td>
+                              <td>
+                                <span className="pk-badge pk-badge--info" style={{ fontSize: '0.72rem' }}>
+                                  {dish.category}
+                                </span>
+                              </td>
+                              <td style={{ fontWeight: 700, color: '#047857' }}>
+                                Rs. {Number(dish.price).toLocaleString()}
+                              </td>
+                              <td style={{ color: '#4b5563' }}>
+                                {dish.unit || 'plate'}
+                              </td>
+                              <td>
+                                {dishMods.length > 0 ? (
+                                  <span className="pk-badge pk-badge--warning" style={{ fontSize: '0.7rem' }}>
+                                    {dishMods.length} modifier group(s)
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>None</span>
+                                )}
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', gap: '0.35rem' }}>
+                                  <button
+                                    className="pk-btn pk-btn--outline pk-btn--sm"
+                                    onClick={() => {
+                                      setEditingDish(dish);
+                                      setDishForm({
+                                        name: dish.name,
+                                        sku: dish.sku,
+                                        category: dish.category,
+                                        price: dish.price,
+                                        unit: dish.unit || 'plate',
+                                        image_url: dish.image_url || '',
+                                      });
+                                      setShowDishModal(true);
+                                    }}
+                                  >
+                                    <i className="bi bi-pencil" />
+                                  </button>
+                                  <button
+                                    className="pk-btn pk-btn--outline pk-btn--sm text-danger"
+                                    onClick={() => handleDeleteDish(dish.id)}
+                                  >
+                                    <i className="bi bi-trash" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -627,6 +884,110 @@ export default function RestaurantPage() {
                 <div className="modal-footer">
                   <button type="button" className="pk-btn pk-btn--outline" onClick={() => setShowModModal(false)}>Cancel</button>
                   <button type="submit" className="pk-btn pk-btn--primary">Save Modifier</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DISH MODAL ── */}
+      {showDishModal && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <form onSubmit={handleSaveDish}>
+                <div className="modal-header">
+                  <h5 className="modal-title">{editingDish ? 'Edit Dish' : 'Add Prepared Dish'}</h5>
+                  <button type="button" className="btn-close" onClick={() => setShowDishModal(false)} />
+                </div>
+                <div className="modal-body">
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Dish Name *</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="e.g. Chicken Biryani, Paneer Butter Masala, Filter Coffee"
+                      required
+                      value={dishForm.name}
+                      onChange={e => setDishForm({ ...dishForm, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="row g-2 mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Category *</label>
+                      <select
+                        className="form-select"
+                        value={dishForm.category}
+                        onChange={e => setDishForm({ ...dishForm, category: e.target.value })}
+                      >
+                        <option value="Starters">Starters</option>
+                        <option value="Main Course">Main Course</option>
+                        <option value="Breads">Breads</option>
+                        <option value="Rice & Biryani">Rice &amp; Biryani</option>
+                        <option value="Beverages">Beverages</option>
+                        <option value="Desserts">Desserts</option>
+                        <option value="Quick Bites">Quick Bites</option>
+                        <option value="Combos">Combos</option>
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Rate / Price (Rs.) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="form-control"
+                        placeholder="180.00"
+                        required
+                        value={dishForm.price}
+                        onChange={e => setDishForm({ ...dishForm, price: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="row g-2 mb-3">
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Portion / Unit</label>
+                      <select
+                        className="form-select"
+                        value={dishForm.unit}
+                        onChange={e => setDishForm({ ...dishForm, unit: e.target.value })}
+                      >
+                        <option value="plate">Plate</option>
+                        <option value="portion">Portion</option>
+                        <option value="cup">Cup</option>
+                        <option value="glass">Glass</option>
+                        <option value="bowl">Bowl</option>
+                        <option value="piece">Piece</option>
+                        <option value="box">Box</option>
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">SKU / Code</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. BIR-001 (auto if empty)"
+                        value={dishForm.sku}
+                        onChange={e => setDishForm({ ...dishForm, sku: e.target.value })}
+                        disabled={!!editingDish}
+                      />
+                    </div>
+                  </div>
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Image URL (Optional)</label>
+                    <input
+                      type="url"
+                      className="form-control"
+                      placeholder="https://…"
+                      value={dishForm.image_url}
+                      onChange={e => setDishForm({ ...dishForm, image_url: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="pk-btn pk-btn--outline" onClick={() => setShowDishModal(false)}>Cancel</button>
+                  <button type="submit" className="pk-btn pk-btn--primary">Save Dish</button>
                 </div>
               </form>
             </div>

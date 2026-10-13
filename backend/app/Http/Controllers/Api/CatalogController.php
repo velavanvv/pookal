@@ -19,6 +19,36 @@ class CatalogController
         }
         unset($data['track_freshness'], $data['freshness_days']);
 
+        $data['track_expiry'] = ! empty($data['track_expiry']);
+
+        if (! isset($data['shelf_life_days']) || $data['shelf_life_days'] === null || $data['shelf_life_days'] === '') {
+            $data['shelf_life_days'] = $data['track_expiry'] ? 3 : 0;
+        } else {
+            $data['shelf_life_days'] = (int) $data['shelf_life_days'];
+        }
+
+        if (empty($data['item_type'])) {
+            $data['item_type'] = 'product';
+        }
+
+        if (empty($data['tax_category'])) {
+            $data['tax_category'] = 'standard';
+        }
+
+        if (empty($data['pricing_mode'])) {
+            $data['pricing_mode'] = 'fixed';
+        }
+
+        if (empty($data['unit'])) {
+            $data['unit'] = 'piece';
+        }
+
+        if (! isset($data['reorder_level']) || $data['reorder_level'] === null || $data['reorder_level'] === '') {
+            $data['reorder_level'] = 0;
+        } else {
+            $data['reorder_level'] = (int) $data['reorder_level'];
+        }
+
         return $data;
     }
 
@@ -43,6 +73,10 @@ class CatalogController
             $query->where('category', $category);
         }
 
+        if ($itemType = $request->query('item_type')) {
+            $query->where('item_type', $itemType);
+        }
+
         $perPage  = (int) $request->query('per_page', 50);
         $products = $query->with(['latestStock', 'modifiers'])->orderBy('name')->paginate($perPage);
 
@@ -63,6 +97,7 @@ class CatalogController
             'sku'             => ['required', 'string', Rule::unique('tenant.products', 'sku')],
             'barcode'         => ['nullable', 'string', 'max:128'],
             'category'        => ['required', 'string'],
+            'item_type'       => ['nullable', 'string', 'in:product,dish,raw_material'],
             'price'           => ['required', 'numeric', 'min:0'],
             'pricing_mode'    => ['nullable', 'string', 'in:fixed,weight,service'],
             'unit'            => ['nullable', 'string'],
@@ -113,6 +148,7 @@ class CatalogController
                 'sku'             => ['required', 'string', 'max:100'],
                 'barcode'         => ['nullable', 'string', 'max:128'],
                 'category'        => ['required', 'string', 'max:120'],
+                'item_type'       => ['nullable', 'string', 'in:product,dish,raw_material'],
                 'price'           => ['required', 'numeric', 'min:0'],
                 'pricing_mode'    => ['nullable', 'string', 'in:fixed,weight,service'],
                 'unit'            => ['nullable', 'string', 'max:60'],
@@ -178,6 +214,7 @@ class CatalogController
             'pricing_mode'    => ['sometimes', 'string', 'in:fixed,weight,service'],
             'unit'            => ['sometimes', 'string'],
             'category'        => ['sometimes', 'string'],
+            'item_type'       => ['sometimes', 'nullable', 'string', 'in:product,dish,raw_material'],
             'reorder_level'   => ['sometimes', 'integer', 'min:0'],
             'track_expiry'    => ['sometimes', 'boolean'],
             'track_freshness' => ['sometimes', 'boolean'],

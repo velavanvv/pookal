@@ -8,3 +8,11 @@
 .vscode/
 *.swp
 *.swo
+
+# Python AI Service
+ai-service/venv/
+ai-service/.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

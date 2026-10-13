@@ -94,9 +94,17 @@ export default function PosPage() {
     }
   };
 
+  const isFoodOrRestaurant = businessType === 'restaurant' || hasCapability('restaurant');
+  const [menuView, setMenuView] = useState(isFoodOrRestaurant ? 'dishes' : 'all'); // 'all' | 'dishes' | 'raw_material'
+
   const stockOf   = (id) => products.find((p) => p.id === id)?.stock ?? 0;
   const cartQtyOf = (id) => cart.filter((c) => c.product_id === id).reduce((s, c) => s + c.qty, 0);
-  const canAdd    = (p)  => (p.stock ?? 0) - cartQtyOf(p.id) > 0;
+  const canAdd    = (p)  => {
+    if (p.item_type === 'dish' || p.pricing_mode === 'service' || (isFoodOrRestaurant && p.item_type !== 'raw_material')) {
+      return true;
+    }
+    return (p.stock ?? 0) - cartQtyOf(p.id) > 0;
+  };
 
   const filtered = products.filter((p) => {
     const matchesSearch =
@@ -104,7 +112,13 @@ export default function PosPage() {
       p.sku.toLowerCase().includes(search.toLowerCase()) ||
       (p.barcode && p.barcode.toLowerCase().includes(search.toLowerCase()));
     const matchesCat = selectedCat === 'All' || p.category === selectedCat;
-    return matchesSearch && matchesCat;
+    const matchesView =
+      menuView === 'all'
+        ? true
+        : menuView === 'dishes'
+        ? (p.item_type === 'dish' || (p.item_type !== 'raw_material' && isFoodOrRestaurant))
+        : p.item_type === 'raw_material';
+    return matchesSearch && matchesCat && matchesView;
   });
 
   const triggerAddToCart = (product) => {
@@ -177,8 +191,10 @@ export default function PosPage() {
     setCart((prev) =>
       prev.map((c) => {
         if (c.cartItemId !== cartItemId) return c;
+        const prod = products.find(p => p.id === c.product_id);
+        const isDishOrService = prod?.item_type === 'dish' || prod?.pricing_mode === 'service' || isFoodOrRestaurant;
         const newQty = c.qty + delta;
-        if (newQty > stockOf(c.product_id)) return c;
+        if (!isDishOrService && newQty > stockOf(c.product_id)) return c;
         return { ...c, qty: newQty };
       }).filter((c) => c.qty > 0)
     );
@@ -409,6 +425,35 @@ export default function PosPage() {
               </div>
             </div>
 
+            {isFoodOrRestaurant && (
+              <div style={{ display: 'flex', gap: '0.4rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.4rem' }}>
+                <button
+                  type="button"
+                  className={`pk-btn pk-btn--sm ${menuView === 'dishes' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                  style={{ borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}
+                  onClick={() => setMenuView('dishes')}
+                >
+                  🍽️ Dishes & Menu
+                </button>
+                <button
+                  type="button"
+                  className={`pk-btn pk-btn--sm ${menuView === 'raw_material' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                  style={{ borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}
+                  onClick={() => setMenuView('raw_material')}
+                >
+                  🌾 Raw Materials Inventory
+                </button>
+                <button
+                  type="button"
+                  className={`pk-btn pk-btn--sm ${menuView === 'all' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+                  style={{ borderRadius: 'var(--radius-sm)', fontSize: '0.78rem' }}
+                  onClick={() => setMenuView('all')}
+                >
+                  All Items
+                </button>
+              </div>
+            )}
+
             {/* Category Pill Filters */}
             <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
               {categories.map(cat => (
@@ -434,10 +479,11 @@ export default function PosPage() {
             ) : (
               <div className="pos-product-grid">
                 {filtered.map((p) => {
+                  const isDish     = p.item_type === 'dish' || p.pricing_mode === 'service' || (isFoodOrRestaurant && p.item_type !== 'raw_material');
                   const stock      = p.stock ?? 0;
                   const inCart     = cartQtyOf(p.id);
-                  const outOfStock = stock <= 0;
-                  const atMax      = !outOfStock && stock - inCart <= 0;
+                  const outOfStock = !isDish && stock <= 0;
+                  const atMax      = !isDish && !outOfStock && stock - inCart <= 0;
                   const isWeight   = p.pricing_mode === 'weight';
                   const hasMods    = p.modifiers && p.modifiers.length > 0;
 
@@ -453,7 +499,7 @@ export default function PosPage() {
                         <img src={p.image_url} alt={p.name} className="pos-product-card__img" onError={(e) => { e.target.style.display = 'none'; }} />
                       ) : (
                         <div className="pos-product-card__img-placeholder">
-                          <i className={isWeight ? 'bi-scale' : hasMods ? 'bi-sliders' : 'bi-box-seam'} />
+                          <i className={isDish ? 'bi-cup-hot' : isWeight ? 'bi-scale' : hasMods ? 'bi-sliders' : 'bi-box-seam'} />
                         </div>
                       )}
                       <span className="pos-product-card__cat">{p.category}</span>
@@ -464,7 +510,11 @@ export default function PosPage() {
                       </span>
 
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
-                        {outOfStock ? (
+                        {isDish ? (
+                          <span className="pk-badge pk-badge--success" style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                            🍽️ Fresh made
+                          </span>
+                        ) : outOfStock ? (
                           <span className="pk-badge pk-badge--danger">Out of stock</span>
                         ) : stock <= (p.reorder_level || 5) ? (
                           <span className="pk-badge pk-badge--warning">Low: {stock}</span>
@@ -539,8 +589,10 @@ export default function PosPage() {
                 </div>
               ) : (
                 cart.map((item) => {
-                  const maxStock = stockOf(item.product_id);
-                  const atMax    = item.qty >= maxStock;
+                  const prod       = products.find(p => p.id === item.product_id);
+                  const isDish     = prod?.item_type === 'dish' || prod?.pricing_mode === 'service' || isFoodOrRestaurant;
+                  const maxStock   = stockOf(item.product_id);
+                  const atMax      = !isDish && item.qty >= maxStock;
 
                   return (
                     <div key={item.cartItemId} className="pos-cart-item" style={{ padding: '0.5rem 0.75rem' }}>

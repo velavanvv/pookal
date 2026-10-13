@@ -22,6 +22,7 @@ class InventoryController
                 'barcode'         => $p->barcode,
                 'name'            => $p->name,
                 'category'        => $p->category,
+                'item_type'       => $p->item_type ?? 'product',
                 'unit'            => $p->unit,
                 'price'           => $p->price,
                 'pricing_mode'    => $p->pricing_mode ?? 'fixed',

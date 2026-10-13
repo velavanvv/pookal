@@ -100,11 +100,16 @@ export default function InventoryPage() {
     finally { setProductLoading(false); }
   };
 
-  const filtered = items.filter(i =>
-    i.name.toLowerCase().includes(search.toLowerCase()) ||
-    i.sku.toLowerCase().includes(search.toLowerCase()) ||
-    i.category.toLowerCase().includes(search.toLowerCase())
-  );
+  const [invTab, setInvTab] = useState('all'); // 'all' | 'raw_material' | 'product' | 'dish'
+
+  const filtered = items.filter(i => {
+    const matchesSearch =
+      i.name.toLowerCase().includes(search.toLowerCase()) ||
+      i.sku.toLowerCase().includes(search.toLowerCase()) ||
+      i.category.toLowerCase().includes(search.toLowerCase());
+    const matchesTab = invTab === 'all' || (i.item_type || 'product') === invTab;
+    return matchesSearch && matchesTab;
+  });
 
   return (
     <div>
@@ -134,6 +139,37 @@ export default function InventoryPage() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className={`pk-btn pk-btn--sm ${invTab === 'all' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+          onClick={() => setInvTab('all')}
+        >
+          All Items ({items.length})
+        </button>
+        <button
+          type="button"
+          className={`pk-btn pk-btn--sm ${invTab === 'raw_material' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+          onClick={() => setInvTab('raw_material')}
+        >
+          🌾 Raw Materials / Ingredients ({items.filter(i => i.item_type === 'raw_material').length})
+        </button>
+        <button
+          type="button"
+          className={`pk-btn pk-btn--sm ${invTab === 'product' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+          onClick={() => setInvTab('product')}
+        >
+          📦 Retail Stock ({items.filter(i => !i.item_type || i.item_type === 'product').length})
+        </button>
+        <button
+          type="button"
+          className={`pk-btn pk-btn--sm ${invTab === 'dish' ? 'pk-btn--primary' : 'pk-btn--outline'}`}
+          onClick={() => setInvTab('dish')}
+        >
+          🍽️ Prepared Dishes ({items.filter(i => i.item_type === 'dish').length})
+        </button>
+      </div>
+
       <div className="pk-card">
         {loading ? (
           <div className="pk-loading">
@@ -148,6 +184,7 @@ export default function InventoryPage() {
                 <th>{t('sku')}</th>
                 <th>{t('productName')}</th>
                 <th>{t('category')}</th>
+                <th>Type</th>
                 <th>{t('unit')}</th>
                 <th>{t('currentStock')}</th>
                 <th>{t('reorderLvl')}</th>
@@ -174,6 +211,11 @@ export default function InventoryPage() {
                     <td style={{ color: 'var(--text-2)', fontSize: '0.78rem', fontFamily: 'monospace' }}>{item.sku}</td>
                     <td style={{ fontWeight: 600 }}>{item.name}</td>
                     <td>{item.category}</td>
+                    <td>
+                      <span className={`pk-badge ${item.item_type === 'raw_material' ? 'pk-badge--warning' : item.item_type === 'dish' ? 'pk-badge--rose' : 'pk-badge--info'}`} style={{ fontSize: '0.7rem' }}>
+                        {item.item_type === 'raw_material' ? 'Raw Mat' : item.item_type === 'dish' ? 'Dish' : 'Retail'}
+                      </span>
+                    </td>
                     <td style={{ color: 'var(--text-2)' }}>{item.unit}</td>
                     <td style={{ fontWeight: 700 }}>{item.stock}</td>
                     <td style={{ color: 'var(--text-2)' }}>{item.reorder_level}</td>
@@ -199,7 +241,7 @@ export default function InventoryPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr className="pk-table__empty"><td colSpan={10}>No inventory items found.</td></tr>
+                <tr className="pk-table__empty"><td colSpan={11}>No inventory items found.</td></tr>
               )}
             </tbody>
           </table>
