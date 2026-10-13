@@ -44,8 +44,10 @@ class RestaurantController
         ], 201);
     }
 
-    public function updateTable(Request $request, RestaurantTable $table): JsonResponse
+    public function updateTable(Request $request, $table): JsonResponse
     {
+        $table = $table instanceof RestaurantTable ? $table : RestaurantTable::findOrFail($table);
+
         $data = $request->validate([
             'name'     => ['sometimes', 'required', 'string', 'max:64'],
             'capacity' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -62,8 +64,10 @@ class RestaurantController
         ]);
     }
 
-    public function updateTableStatus(Request $request, RestaurantTable $table): JsonResponse
+    public function updateTableStatus(Request $request, $table): JsonResponse
     {
+        $table = $table instanceof RestaurantTable ? $table : RestaurantTable::findOrFail($table);
+
         $data = $request->validate([
             'status' => ['required', 'in:vacant,occupied,reserved,billing'],
         ]);
@@ -76,8 +80,9 @@ class RestaurantController
         ]);
     }
 
-    public function destroyTable(RestaurantTable $table): JsonResponse
+    public function destroyTable($table): JsonResponse
     {
+        $table = $table instanceof RestaurantTable ? $table : RestaurantTable::findOrFail($table);
         $table->delete();
 
         return response()->json(['message' => 'Table deleted successfully.']);
@@ -134,8 +139,10 @@ class RestaurantController
         ], 201);
     }
 
-    public function updateTicketStatus(Request $request, KitchenTicket $ticket): JsonResponse
+    public function updateTicketStatus(Request $request, $ticket): JsonResponse
     {
+        $ticket = $ticket instanceof KitchenTicket ? $ticket : KitchenTicket::findOrFail($ticket);
+
         $data = $request->validate([
             'status' => ['required', 'in:pending,preparing,ready,served,cancelled'],
         ]);
@@ -183,8 +190,10 @@ class RestaurantController
         ], 201);
     }
 
-    public function updateModifier(Request $request, ProductModifier $modifier): JsonResponse
+    public function updateModifier(Request $request, $modifier): JsonResponse
     {
+        $modifier = $modifier instanceof ProductModifier ? $modifier : ProductModifier::findOrFail($modifier);
+
         $data = $request->validate([
             'name'        => ['sometimes', 'required', 'string', 'max:128'],
             'price_delta' => ['nullable', 'numeric'],
@@ -200,8 +209,9 @@ class RestaurantController
         ]);
     }
 
-    public function destroyModifier(ProductModifier $modifier): JsonResponse
+    public function destroyModifier($modifier): JsonResponse
     {
+        $modifier = $modifier instanceof ProductModifier ? $modifier : ProductModifier::findOrFail($modifier);
         $modifier->delete();
 
         return response()->json(['message' => 'Modifier deleted.']);

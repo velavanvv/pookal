@@ -46,8 +46,9 @@ class CrmController
         return response()->json(['message' => 'Customer saved.', 'customer' => $customer], 201);
     }
 
-    public function updateCustomer(Request $request, Customer $customer)
+    public function updateCustomer(Request $request, $customer)
     {
+        $customer = $customer instanceof Customer ? $customer : Customer::findOrFail($customer);
         $uid = $request->user()->shopOwnerId();
         abort_if($customer->user_id !== $uid, 403);
 
@@ -64,8 +65,9 @@ class CrmController
         return response()->json(['message' => 'Customer updated.', 'customer' => $customer]);
     }
 
-    public function adjustPoints(Request $request, Customer $customer)
+    public function adjustPoints(Request $request, $customer)
     {
+        $customer = $customer instanceof Customer ? $customer : Customer::findOrFail($customer);
         $uid = $request->user()->shopOwnerId();
         abort_if($customer->user_id !== $uid, 403);
 

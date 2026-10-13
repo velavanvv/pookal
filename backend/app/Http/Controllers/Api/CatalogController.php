@@ -202,8 +202,9 @@ class CatalogController
         ], 201);
     }
 
-    public function update(Request $request, Product $product)
+    public function update(Request $request, $product)
     {
+        $product = $product instanceof Product ? $product : Product::findOrFail($product);
         $uid = $request->user()->shopOwnerId();
         abort_if($product->user_id !== $uid, 403, 'Forbidden.');
 
