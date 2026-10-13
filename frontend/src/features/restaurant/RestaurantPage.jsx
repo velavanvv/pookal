@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { printKotTicket, printGuestBill } from '../../services/printService';
 
 export default function RestaurantPage() {
   const [activeTab, setActiveTab] = useState('floor'); // 'floor' | 'kot' | 'modifiers'
@@ -9,6 +10,7 @@ export default function RestaurantPage() {
   const [modifiers, setModifiers] = useState([]);
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState(null);
+  const [shopSettings, setShopSettings] = useState({});
   const [loading, setLoading] = useState(true);
 
   // Table Modal
@@ -92,18 +94,20 @@ export default function RestaurantPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [tRes, kRes, mRes, pRes, sRes] = await Promise.all([
+      const [tRes, kRes, mRes, pRes, sRes, setRes] = await Promise.all([
         api.get('/restaurant/tables'),
         api.get('/restaurant/kots'),
         api.get('/restaurant/modifiers'),
         api.get('/catalog/products?per_page=100'),
         api.get('/restaurant/stats'),
+        api.get('/settings').catch(() => ({ data: {} })),
       ]);
       setTables(tRes.data.data || []);
       setKots(kRes.data.data || []);
       setModifiers(mRes.data.data || []);
       setProducts(pRes.data.data || pRes.data || []);
       setStats(sRes.data);
+      if (setRes?.data) setShopSettings(setRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -175,9 +179,7 @@ export default function RestaurantPage() {
 
   const handlePrintKot = (kot) => {
     setSelectedKot(kot);
-    setTimeout(() => {
-      window.print();
-    }, 200);
+    printKotTicket(kot, shopSettings.shop_name || 'RESTAURANT KITCHEN');
   };
 
   const handleOpenSettle = async (orderOrId, table = null) => {
@@ -1222,7 +1224,7 @@ export default function RestaurantPage() {
                   <button
                     className="pk-btn pk-btn--primary flex-fill"
                     onClick={() => {
-                      window.print();
+                      printGuestBill(settledReceipt.order, settledReceipt.table, shopSettings);
                     }}
                   >
                     <i className="bi bi-printer me-1" /> Print Guest Bill
@@ -1242,7 +1244,7 @@ export default function RestaurantPage() {
 
       {/* ── PRINT LAYOUT FOR GUEST BILL ── */}
       {settledReceipt && (
-        <div className="d-none d-print-block" style={{ width: '80mm', margin: '0 auto', fontFamily: 'monospace', fontSize: '12px' }}>
+        <div className="printable-slip d-none d-print-block" style={{ width: '80mm', margin: '0 auto', fontFamily: 'monospace', fontSize: '12px' }}>
           <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '6px' }}>
             <h3 style={{ margin: '0 0 2px', fontSize: '18px' }}>*** TAX INVOICE ***</h3>
             <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Restaurant / Dining</div>
@@ -1274,7 +1276,7 @@ export default function RestaurantPage() {
 
       {/* ── HIDDEN PRINT LAYOUT FOR KOT ── */}
       {selectedKot && (
-        <div className="d-none d-print-block" style={{ width: '80mm', margin: '0 auto', fontFamily: 'monospace', fontSize: '12px' }}>
+        <div className="printable-slip d-none d-print-block" style={{ width: '80mm', margin: '0 auto', fontFamily: 'monospace', fontSize: '12px' }}>
           <div style={{ textAlign: 'center', borderBottom: '1px dashed #000', paddingBottom: '5px' }}>
             <h4 style={{ margin: '0 0 4px', fontSize: '18px' }}>*** KITCHEN TICKET ***</h4>
             <div>Ticket: <strong>{selectedKot.ticket_number}</strong></div>

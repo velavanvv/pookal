@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useI18n } from '../auth/I18nContext';
 import { speakText } from '../../hooks/useVoice';
 import VoiceButton from '../../components/common/VoiceButton';
+import { printThermalContent } from '../../services/printService';
 
 export default function PosPage() {
   const { user, businessType, posMode, hasCapability } = useAuth();
@@ -297,14 +298,7 @@ export default function PosPage() {
   const handlePrint = () => {
     const printContent = receiptRef.current?.innerHTML;
     if (!printContent) return;
-    const win = window.open('', '_blank', 'width=400,height=600');
-    win.document.write(`<html><head><title>Receipt</title><style>
-      body{font-family:monospace;font-size:12px;margin:0;padding:16px;}
-      table{width:100%;border-collapse:collapse;}td{padding:2px 0;}
-      .text-end{text-align:right;}.divider{border-top:1px dashed #999;margin:6px 0;}
-      .center{text-align:center;}.bold{font-weight:bold;}
-    </style></head><body onload="window.print();window.close();">${printContent}</body></html>`);
-    win.document.close();
+    printThermalContent(printContent, `Receipt_${lastOrder?.order_number || 'Slip'}`);
   };
 
   const changeDue = Math.max(0, (parseFloat(cashTendered) || 0) - grandTotal);
